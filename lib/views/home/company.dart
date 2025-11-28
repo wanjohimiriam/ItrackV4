@@ -5,31 +5,22 @@ import 'package:itrack/http/controller/companycontroller.dart';
 import 'package:itrack/http/model/locationmodel.dart';
 import 'package:itrack/views/widget/colors.dart';
 
-class CompanyLocationScreen extends StatefulWidget {
+class CompanyLocationScreen extends StatelessWidget {
   const CompanyLocationScreen({Key? key}) : super(key: key);
 
   @override
-  State<CompanyLocationScreen> createState() => _CompanyLocationScreenState();
-}
-
-class _CompanyLocationScreenState extends State<CompanyLocationScreen> {
-  late final CompanyController controller;
-
-  @override
-  void initState() {
-    super.initState();
-    // Create or get the controller
-    controller = Get.put(CompanyController());
-    // Initialize it after login
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.initialize();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // ✅ Use Get.put to ensure controller is created and registered
+    final controller = Get.put(CompanyController());
+    
+    // ✅ Initialize after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!controller.isInitialized) {
+        controller.initialize();
+      }
+    });
 
+    return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
@@ -42,24 +33,12 @@ class _CompanyLocationScreenState extends State<CompanyLocationScreen> {
         child: Column(
           children: [
             const SizedBox(height: 80),
-
-            // Logo - matching login screen
             _buildLogoSection(),
-
             const SizedBox(height: 80),
-
-            // Location Dropdown
-            _buildLocationDropdown(),
-
-            // Error Message
-            _buildErrorMessage(),
-
-            // const Spacer(),
-             const SizedBox(height: 240),
-
-            // Continue Button
-            _buildContinueButton(),
-
+            _buildLocationDropdown(controller),
+            _buildErrorMessage(controller),
+            const SizedBox(height: 240),
+            _buildContinueButton(controller),
             const SizedBox(height: 40),
           ],
         ),
@@ -101,7 +80,7 @@ class _CompanyLocationScreenState extends State<CompanyLocationScreen> {
     );
   }
 
-  Widget _buildLocationDropdown() {
+  Widget _buildLocationDropdown(CompanyController controller) {
     return Obx(() {
       if (controller.isLoading.value) {
         return Container(
@@ -175,7 +154,7 @@ class _CompanyLocationScreenState extends State<CompanyLocationScreen> {
     });
   }
 
-  Widget _buildErrorMessage() {
+  Widget _buildErrorMessage(CompanyController controller) {
     return Obx(() {
       if (controller.errorMessage.value.isNotEmpty) {
         return Padding(
@@ -214,7 +193,7 @@ class _CompanyLocationScreenState extends State<CompanyLocationScreen> {
     });
   }
 
-  Widget _buildContinueButton() {
+  Widget _buildContinueButton(CompanyController controller) {
     return Obx(() {
       return SizedBox(
         width: double.infinity,

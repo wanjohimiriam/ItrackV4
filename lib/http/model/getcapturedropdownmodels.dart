@@ -219,13 +219,16 @@ class ConditionModel {
     };
   }
 }
+
 class PersonModel {
   final String id;
   final String firstName;
-  final String? otherName;
-  final String surname;
-  final String personCode;
+  final String lastName;  // or surname
+  final String middleName;
+  final String displayName;
+  final String fullName;
   final String staffEmail;
+  final String personCode;
   final String unit;
   final String costCenter;
   final String? departmentId;
@@ -235,10 +238,12 @@ class PersonModel {
   PersonModel({
     required this.id,
     required this.firstName,
-    this.otherName,
-    required this.surname,
-    required this.personCode,
+    required this.lastName,
+    required this.middleName,
+    required this.displayName,
+    required this.fullName,
     required this.staffEmail,
+    required this.personCode,
     required this.unit,
     required this.costCenter,
     this.departmentId,
@@ -246,38 +251,21 @@ class PersonModel {
     required this.tenantId,
   });
 
-  // Helper getter for display name
-  String get fullName => surname; // Using surname as it contains full name like "William Hernandez"
-
   factory PersonModel.fromJson(Map<String, dynamic> json) {
     return PersonModel(
       id: json['id'] ?? '',
       firstName: json['firstName'] ?? '',
-      otherName: json['otherName'],
-      surname: json['surname'] ?? '',
+      lastName: json['lastName'] ?? '',  // ✅ Map to lastName
+      middleName: json['middleName'] ?? '',
+      displayName: json['displayName'] ?? '',
+      fullName: json['fullName'] ?? '',
+      staffEmail: json['staffEmail'] ?? json['email'] ?? '',
       personCode: json['personCode'] ?? '',
-      staffEmail: json['staffEmail'] ?? '',
       unit: json['unit'] ?? '',
       costCenter: json['costCenter'] ?? '',
       departmentId: json['departmentId'],
-      isActive: json['isActive'] ?? true,
+      isActive: json['isActive'] ?? false,
       tenantId: json['tenantId'] ?? '',
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'firstName': firstName,
-      'otherName': otherName,
-      'surname': surname,
-      'personCode': personCode,
-      'staffEmail': staffEmail,
-      'unit': unit,
-      'costCenter': costCenter,
-      'departmentId': departmentId,
-      'isActive': isActive,
-      'tenantId': tenantId,
-    };
   }
 }

@@ -10,7 +10,7 @@ class ApiEndPoints {
 
   // Audit/Asset
   static const String AddAssets = "Asset/assets/";
-  static const String updateAsset = "Asset/AssetAudit/";
+  static const String updateAsset = "Asset/AssetAudit";
   static String getAssetsByBarcode(String barcode) => 
     "/Asset/assets/by-barcode/$barcode";
   
@@ -31,6 +31,9 @@ class ApiEndPoints {
     static const String getAssetTypes = "Config/asset-classes";
     static const String getConditions = "Config/conditions";
     static const String getPersons = "Config/persons";
+
+    //home
+    static const String getDashboardSummary = "Dashboard/app-dashboard";
 
 
 }

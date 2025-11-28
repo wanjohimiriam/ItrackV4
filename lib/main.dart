@@ -26,10 +26,10 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       initialBinding: BindingsBuilder(() {
-        // Only put controllers that need to be permanent
+        // ✅ Only put AuthController as permanent
         Get.put(AuthController(), permanent: true);
         Get.put(CaptureController(), permanent: true);
-        // Don't put CompanyController here - it will be created when needed
+        // ❌ DON'T put CaptureController here - it should be created only when needed
       }),
       getPages: [
         GetPage(
@@ -38,15 +38,24 @@ class MyApp extends StatelessWidget {
         ),
         GetPage(
           name: "/login",
-          page: () => const LoginScreen(),
+          page: () {
+            print('🟢 ROUTE: Navigating to LoginScreen');
+            return const LoginScreen();
+          },
         ),
         GetPage(
           name: "/home",
-          page: () => MainScreen(),
+          page: () {
+            print('🟢 ROUTE: Navigating to MainScreen (Home)');
+            return MainScreen();
+          },
         ),
         GetPage(
           name: "/company",
-          page: () => CompanyLocationScreen(),
+          page: () {
+            print('🟢 ROUTE: Navigating to CompanyLocationScreen');
+            return const CompanyLocationScreen();
+          },
         ),
         GetPage(
           name: "/forgot-password",
@@ -57,7 +66,7 @@ class MyApp extends StatelessWidget {
           page: () => ResetPasswordScreen(),
         ),
       ],
-      initialRoute: "/",
+      initialRoute: "/login",
       unknownRoute: GetPage(
         name: "/notfound",
         page: () => Scaffold(
@@ -82,7 +91,7 @@ class MyApp extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () => Get.offAllNamed('/login'),
+                  onPressed: () => Get.offAllNamed('/login'),  // ✅ Changed from /home to /login
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.primary,
@@ -114,6 +123,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   }
 
   Future<void> _checkAuthStatus() async {
+    print('🟡 AuthCheckScreen: Checking auth status...');
     final authController = Get.find<AuthController>();
     
     // Give a small delay for splash effect

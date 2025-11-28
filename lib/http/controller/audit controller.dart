@@ -1,8 +1,12 @@
+// ignore_for_file: avoid_print
+
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:itrack/http/model/assetrequestmodel.dart';
 import 'package:itrack/http/model/assetresponsemodel.dart';
+import 'package:itrack/http/model/auditrequestmodel.dart';
 import 'package:itrack/http/model/getcapturedropdownmodels.dart';
 import 'package:itrack/http/model/locationmodel.dart';
 import 'package:itrack/http/service/assetservice.dart';
@@ -100,7 +104,20 @@ class CaptureController extends GetxController {
     _setupBarcodeListener();
     _loadDropdownData();
     _loadSavedLocation(); // Load the saved company location
+    _loadCurrentUser();
   }
+
+  Future<void> _loadCurrentUser() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    currentUserId = prefs.getString('user_id') ?? 'default-user-id';
+    tenantId = prefs.getString('tenant_id') ?? 'default-tenant-id';
+    print('🟢 Loaded user ID: $currentUserId');
+    print('🟢 Loaded tenant ID: $tenantId');
+  } catch (e) {
+    print('🔴 Error loading user data: $e');
+  }
+}
 
   void _initializeData() {
     // TODO: Get tenantId from user data
@@ -180,15 +197,13 @@ class CaptureController extends GetxController {
       conditionList.value = conditionModels.map((c) => c.name).toList();
       print('🟢 Loaded ${conditionModels.length} conditions');
 
-      // Persons
-      personModels = results[5] as List<PersonModel>;
-      personList.value = personModels
-          .where((p) => p.surname.isNotEmpty) // Changed from personCodeName
-          .map((p) => p.surname) // Changed from personCodeName
-          .toList();
-      print(
-        '🟢 Loaded ${personModels.length} persons (${personList.length} with names)',
-      );
+   // In _loadDropdownData
+personModels = results[5] as List<PersonModel>;
+personList.value = personModels
+    .where((p) => p.displayName.isNotEmpty || p.fullName.isNotEmpty)
+    .map((p) => p.displayName.isNotEmpty ? p.displayName : p.fullName)
+    .toList();
+print('🟢 Loaded ${personModels.length} persons (${personList.length} with names)');
 
       // Locations
       locationModels = results[6] as List<Location>;
@@ -323,98 +338,103 @@ class CaptureController extends GetxController {
   }
 
   void _autoFillAssetData(AssetResponseModel asset) {
-    barcodeHiddenController.text = asset.barcode ?? '';
-    serialNoController.text = asset.serialNumber ?? '';
-    assetDescController.text = asset.assetDescription ?? '';
-    assetClassCodeController.text = asset.assetCode ?? '';
-    assetIdController.text = asset.id ?? '';
-    commentController.text = asset.comments ?? '';
+  barcodeHiddenController.text = asset.barcode ?? '';
+  serialNoController.text = asset.serialNumber ?? '';
+  assetDescController.text = asset.assetDescription ?? '';
+  assetClassCodeController.text = asset.assetCode ?? '';
+  assetIdController.text = asset.id ?? '';
+  commentController.text = asset.comments ?? '';
 
-    if (asset.purchasePrice != null) {
-      purchasePriceController.text = asset.purchasePrice.toString();
-    }
-
-    // Use the actual field names from API response
-    if (asset.assetTypeName != null)
-      selectedAssetClass.value = asset.assetTypeName!;
-    if (asset.conditionName != null)
-      selectedCondition.value = asset.conditionName!;
-    if (asset.departmentName != null)
-      selectedDepartment.value = asset.departmentName!;
-
-    // FIXED: Use personName directly from API response
-    if (asset.personName != null && asset.personName!.isNotEmpty) {
-      selectedPerson.value = asset.personName!;
-      print('🟢 Person populated from API: ${asset.personName}');
-    }
-
-    // Try to get additional person details from personModels list if available
-    if (asset.personId != null && personModels.isNotEmpty) {
-      try {
-        final person = personModels.firstWhere(
-          (item) => item.id == asset.personId,
-        );
-        // Update email, unit, costCenter from person data
-        emailController.text = person.staffEmail;
-        unitController.text = person.unit;
-        costCenterController.text = person.costCenter;
-        print('🟢 Additional person details loaded from list');
-      } catch (e) {
-        print('🟡 Could not find person details in list: ${asset.personId}');
-        // Fallback to cost centre name from asset if available
-        costCenterController.text = asset.costCentreName ?? '';
-      }
-    } else {
-      // If no person list, use what we have from the asset
-      costCenterController.text = asset.costCentreName ?? '';
-    }
-
-    // For location, use locationName directly from API
-    if (asset.locationName != null && asset.locationName!.isNotEmpty) {
-      selectedMainLocation.value = asset.locationName!;
-      print('🟢 Location populated from API: ${asset.locationName}');
-    }
-
-    // if (asset.subLocationName != null) selectedSubLocation.value = asset.subLocationName!;
-    if (asset.roomName != null) selectedRoom.value = asset.roomName!;
-    if (asset.plantName != null) selectedPlantName.value = asset.plantName!;
-    if (asset.plantCode != null) selectedPlantCode.value = asset.plantCode!;
-
-    roomController.text = asset.roomName ?? '';
-
-    // Store IDs
-    assetClassId = asset.assetTypeId;
-    conditionId = asset.conditionId;
-    departmentId = asset.departmentId;
-    personId = asset.personId;
-    mainLocationId = asset.locationId;
-    // subLocationId = asset.subLocationId;
-    roomDescId = asset.roomId;
-    plantId = asset.plantId;
-
-    if (departmentId != null && asset.departmentName != null) {
-      _setDepartmentHead(asset.departmentName!);
-    }
-
-    print('🟢 Asset data populated successfully');
+  if (asset.purchasePrice != null) {
+    purchasePriceController.text = asset.purchasePrice.toString();
   }
+
+  // Populate dropdowns
+  if (asset.assetTypeName != null) selectedAssetClass.value = asset.assetTypeName!;
+  if (asset.conditionName != null) selectedCondition.value = asset.conditionName!;
+  if (asset.departmentName != null) selectedDepartment.value = asset.departmentName!;
+  if (asset.personName != null && asset.personName!.isNotEmpty) {
+    selectedPerson.value = asset.personName!;
+    print('🟢 Person populated from API: ${asset.personName}');
+  }
+  if (asset.locationName != null && asset.locationName!.isNotEmpty) {
+    selectedMainLocation.value = asset.locationName!;
+    print('🟢 Location populated from API: ${asset.locationName}');
+  }
+  if (asset.subLocationName != null) selectedSubLocation.value = asset.subLocationName!;
+  if (asset.roomName != null) selectedRoom.value = asset.roomName!;
+  if (asset.plantName != null) selectedPlantName.value = asset.plantName!;
+  if (asset.plantCode != null) selectedPlantCode.value = asset.plantCode!;
+
+  // ✅ Populate head of department from API
+  if (asset.headofDepartment != null && asset.headofDepartment!.isNotEmpty) {
+    selectedHeadDepartment.value = asset.headofDepartment!;
+    print('🟢 Head of Department populated from API: ${asset.headofDepartment}');
+  }
+
+  roomController.text = asset.roomName ?? '';
+
+  // Populate person details
+  if (asset.personId != null && personModels.isNotEmpty) {
+    try {
+      final person = personModels.firstWhere(
+        (item) => item.id == asset.personId,
+      );
+      emailController.text = person.staffEmail;
+      unitController.text = person.unit;
+      costCenterController.text = person.costCenter;
+      print('🟢 Additional person details loaded from list');
+    } catch (e) {
+      print('🟡 Could not find person details in list: ${asset.personId}');
+      // Fallback to data from asset API response
+      emailController.text = asset.email ?? '';
+      unitController.text = asset.unit ?? '';
+      costCenterController.text = asset.costCenter ?? asset.costCentreName ?? '';
+    }
+  } else {
+    // Use data directly from asset API response
+    emailController.text = asset.email ?? '';
+    unitController.text = asset.unit ?? '';
+    costCenterController.text = asset.costCenter ?? asset.costCentreName ?? '';
+  }
+
+  // Store IDs
+  assetClassId = asset.assetTypeId;
+  conditionId = asset.conditionId;
+  departmentId = asset.departmentId;
+  personId = asset.personId;
+  mainLocationId = asset.locationId;
+  subLocationId = asset.subLocationId;
+  roomDescId = asset.roomId;
+  plantId = asset.plantId;
+
+  print('🟢 Asset data populated successfully');
+  print('📋 Asset Summary:');
+  print('   Description: ${asset.assetDescription}');
+  print('   Person: ${asset.personName}');
+  print('   Department: ${asset.departmentName}');
+  print('   Head of Dept: ${asset.headofDepartment}');
+  print('   Location: ${asset.locationName}');
+  print('   Room: ${asset.roomName}');
+  print('   Condition: ${asset.conditionName}');
+}
 
   void onPersonSelected(String value) {
     selectedPerson.value = value;
 
     final person = personModels.firstWhere(
-      (item) => item.surname == value, // Changed from personCodeName
+      (item) => item.lastName == value, // Changed from personCodeName
       orElse: () => PersonModel(
         id: '',
         firstName: '',
-        surname: '',
+        lastName: '',
         personCode: '',
         staffEmail: '',
         unit: '',
         costCenter: '',
         departmentId: '',
         isActive: false,
-        tenantId: '',
+        tenantId: '', middleName: '', displayName: '', fullName: '',
       ),
     );
 
@@ -463,31 +483,31 @@ class CaptureController extends GetxController {
   final searchController = TextEditingController();
   final RxList<PersonModel> filteredPersons = <PersonModel>[].obs;
 
-  // Initially show all persons
-  filteredPersons.value = personModels
-      .where((p) => p.surname.isNotEmpty)
-      .toList();
+filteredPersons.value = personModels
+    .where((p) => p.displayName.isNotEmpty || p.fullName.isNotEmpty)
+    .toList();
 
-  // Filter function
-  void filterPersons(String query) {
-    if (query.isEmpty) {
-      filteredPersons.value = personModels
-          .where((p) => p.surname.isNotEmpty)
-          .toList();
-    } else {
-      filteredPersons.value = personModels.where((p) {
-        if (p.surname.isEmpty) return false;
+// Filter function
+void filterPersons(String query) {
+  if (query.isEmpty) {
+    filteredPersons.value = personModels
+        .where((p) => p.displayName.isNotEmpty || p.fullName.isNotEmpty)
+        .toList();
+  } else {
+    filteredPersons.value = personModels.where((p) {
+      final name = p.displayName.isNotEmpty ? p.displayName : p.fullName;
+      if (name.isEmpty) return false;
 
-        final nameLower = p.surname.toLowerCase();
-        final emailLower = p.staffEmail.toLowerCase();
-        final codeLower = p.personCode.toLowerCase();
-        final queryLower = query.toLowerCase();
-        return nameLower.contains(queryLower) ||
-            emailLower.contains(queryLower) ||
-            codeLower.contains(queryLower);
-      }).toList();
-    }
+      final nameLower = name.toLowerCase();
+      final emailLower = p.staffEmail.toLowerCase();
+      final codeLower = p.personCode.toLowerCase();
+      final queryLower = query.toLowerCase();
+      return nameLower.contains(queryLower) ||
+          emailLower.contains(queryLower) ||
+          codeLower.contains(queryLower);
+    }).toList();
   }
+}
 
   Get.dialog(
     Dialog(
@@ -571,7 +591,7 @@ class CaptureController extends GetxController {
                       leading: CircleAvatar(
                         backgroundColor: Colors.green.shade100,
                         child: Text(
-                          person.surname.substring(0, 1).toUpperCase(), // ✅ Fixed: person not p
+                          person.lastName.substring(0, 1).toUpperCase(), // ✅ Fixed: person not p
                           style: TextStyle(
                             color: Colors.green.shade800,
                             fontWeight: FontWeight.bold,
@@ -579,7 +599,7 @@ class CaptureController extends GetxController {
                         ),
                       ),
                       title: Text(
-                        person.surname, // ✅ Fixed: person not p
+                        person.lastName, // ✅ Fixed: person not p
                         style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                       subtitle: Column(
@@ -600,7 +620,7 @@ class CaptureController extends GetxController {
                       ),
                       onTap: () {
                         Get.back();
-                        onPersonSelected(person.surname); // ✅ Fixed: person not p
+                        onPersonSelected(person.lastName); // ✅ Fixed: person not p
                       },
                     );
                   },
@@ -821,54 +841,137 @@ class CaptureController extends GetxController {
   }
 
   // Save Asset
-  Future<void> saveAsset() async {
-    if (barcodeHiddenController.text.isEmpty) {
-      Get.snackbar(
-        'Validation Error',
-        'Barcode is required',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
+  // Add this property at the top of CaptureController
+String currentUserId = 'your-user-id'; // TODO: Get from auth service
+
+Future<void> saveAsset() async {
+  if (barcodeHiddenController.text.isEmpty) {
+    Get.snackbar(
+      'Validation Error',
+      'Barcode is required',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.orange,
+      colorText: Colors.white,
+    );
+    return;
+  }
+
+  if (assetDescController.text.isEmpty) {
+    Get.snackbar(
+      'Validation Error',
+      'Asset Description cannot be empty',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.orange,
+      colorText: Colors.white,
+    );
+    return;
+  }
+
+  if (assetClassId == null) {
+    Get.snackbar(
+      'Validation Error',
+      'Asset Type cannot be empty',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.orange,
+      colorText: Colors.white,
+    );
+    return;
+  }
+
+  if (mainLocationId == null) {
+    Get.snackbar(
+      'Validation Error',
+      'Location cannot be empty',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.orange,
+      colorText: Colors.white,
+    );
+    return;
+  }
+
+  try {
+    isLoading.value = true;
+
+    if (saveType.value == 'update') {
+      // ✅ AUDIT MODE
+      print('🔵 ========== AUDIT MODE ==========');
+      print('🔵 Barcode: ${barcodeHiddenController.text}');
+      print('🔵 Asset Name: ${assetDescController.text}');
+      print('🔵 Main Location: ${selectedMainLocation.value}');
+      print('🔵 New Location: ${currentLocationController.text}');
+      print('🔵 SubLocation: ${selectedSubLocation.value}');
+      print('🔵 Department: ${selectedDepartment.value}');
+      print('🔵 Person: ${selectedPerson.value}');
+      print('🔵 Condition: ${selectedCondition.value}');
+      print('🔵 Room: ${roomController.text}');
+      print('🔵 Comments: ${commentController.text}');
+      print('🔵 Tenant ID: $tenantId');
+      print('🔵 User ID: $currentUserId');
+      
+      final auditRequest = AuditAssetRequestModel(
+        barcode: barcodeHiddenController.text,
+        assetName: assetDescController.text,
+        mainLocation: selectedMainLocation.value.isEmpty 
+            ? null 
+            : selectedMainLocation.value,
+        newLocation: currentLocationController.text.isEmpty 
+            ? null 
+            : currentLocationController.text,
+        subLocation: selectedSubLocation.value.isEmpty 
+            ? null 
+            : selectedSubLocation.value,
+        department: selectedDepartment.value.isEmpty 
+            ? null 
+            : selectedDepartment.value,
+        userId: currentUserId,
+        conditionId: conditionId,
+        roomDesc: roomController.text.isEmpty 
+            ? null 
+            : roomController.text,
+        moreText: commentController.text.isEmpty 
+            ? null 
+            : commentController.text,
+        person: selectedPerson.value.isEmpty 
+            ? null 
+            : selectedPerson.value,
+        pfNo: null,
+        subLocationId: subLocationId,
+        subSubLocationId: null,
+        condition: selectedCondition.value.isEmpty 
+            ? null 
+            : selectedCondition.value,
+        tenantId: tenantId,
+        conditionChangeApprovers: null,
+        conditionChangeNotes: commentController.text.isEmpty 
+            ? null 
+            : commentController.text,
       );
-      return;
-    }
 
-    if (assetDescController.text.isEmpty) {
-      Get.snackbar(
-        'Validation Error',
-        'Asset Description cannot be empty',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
+      print('🔵 ========== AUDIT REQUEST JSON ==========');
+      final jsonData = auditRequest.toJson();
+      print(const JsonEncoder.withIndent('  ').convert(jsonData));
+      print('🔵 ========================================');
+
+      // ✅ Call auditAsset method (not updateAsset)
+      await _assetService.auditAsset(auditRequest);
+
+      isLoading.value = false;
+
+      Get.defaultDialog(
+        title: 'Success',
+        middleText: 'Asset audit for ${assetDescController.text} successfully completed',
+        textConfirm: 'OK',
+        confirmTextColor: Colors.white,
+        onConfirm: () {
+          Get.back();
+          _clearForm();
+        },
       );
-      return;
-    }
-
-    if (assetClassId == null) {
-      Get.snackbar(
-        'Validation Error',
-        'Asset Type cannot be empty',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
-    if (mainLocationId == null) {
-      Get.snackbar(
-        'Validation Error',
-        'Location cannot be empty',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
-    try {
-      isLoading.value = true;
-
+      
+    } else {
+      // ✅ CREATE MODE
+      print('🔵 ========== CREATE MODE ==========');
+      
       double? purchasePrice;
       if (purchasePriceController.text.isNotEmpty) {
         purchasePrice = double.tryParse(purchasePriceController.text);
@@ -890,7 +993,6 @@ class CaptureController extends GetxController {
         departmentId: departmentId,
         locationId: mainLocationId!,
         roomId: roomDescId,
-        // subLocationId: subLocationId,
         plantId: plantId,
         personId: personId,
         person: selectedPerson.value.isEmpty ? null : selectedPerson.value,
@@ -906,59 +1008,49 @@ class CaptureController extends GetxController {
         triggerEmailNotification: true,
         status: 0,
         createDate: DateTime.now(),
-        updateDate: saveType.value == 'update' ? DateTime.now() : null,
+        updateDate: null,
         createdBy: 'current_user',
       );
 
-      AssetResponseModel response;
+      print('🔵 ========== CREATE REQUEST JSON ==========');
+      final jsonData = request.toJson();
+      print(const JsonEncoder.withIndent('  ').convert(jsonData));
+      print('🔵 ==========================================');
 
-      if (saveType.value == 'update') {
-        response = await _assetService.updateAsset(request);
+      final response = await _assetService.createAsset(request);
 
-        isLoading.value = false;
-
-        Get.defaultDialog(
-          title: 'Success',
-          middleText:
-              'Asset audit for ${assetDescController.text} successfully completed',
-          textConfirm: 'OK',
-          confirmTextColor: Colors.white,
-          onConfirm: () {
-            Get.back();
-            _clearForm();
-          },
-        );
-      } else {
-        response = await _assetService.createAsset(request);
-
-        isLoading.value = false;
-
-        Get.defaultDialog(
-          title: 'Success',
-          middleText:
-              'Asset verification for ${assetDescController.text} successfully completed',
-          textConfirm: 'OK',
-          confirmTextColor: Colors.white,
-          onConfirm: () {
-            Get.back();
-            _clearForm();
-          },
-        );
-      }
-
-      print('Asset saved successfully: ${response.id}');
-    } catch (e) {
       isLoading.value = false;
-      Get.snackbar(
-        'Error',
-        'Failed to save asset: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
+
+      Get.defaultDialog(
+        title: 'Success',
+        middleText: 'Asset verification for ${assetDescController.text} successfully completed',
+        textConfirm: 'OK',
+        confirmTextColor: Colors.white,
+        onConfirm: () {
+          Get.back();
+          _clearForm();
+        },
       );
+
+      print('🟢 Asset saved successfully: ${response.id}');
     }
+  } catch (e) {
+    isLoading.value = false;
+    print('🔴 ========== SAVE ASSET ERROR ==========');
+    print('🔴 Error: $e');
+    print('🔴 Stack trace: ${StackTrace.current}');
+    print('🔴 ========================================');
+    
+    Get.snackbar(
+      'Error',
+      'Failed to save asset: $e',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.red,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 5),
+    );
   }
+}
 
   void _clearForm() {
     barcodeController.clear();

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:itrack/views/home/audit.dart';
-import 'package:itrack/views/home/home.dart'; // Your existing capture screen
+import 'package:itrack/views/home/dashboard.dart'; // Your existing capture screen
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);

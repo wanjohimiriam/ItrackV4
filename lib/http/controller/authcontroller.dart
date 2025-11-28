@@ -7,6 +7,7 @@ import 'package:itrack/http/model/authmodels.dart';
 import 'package:itrack/http/service/authmiddleware.dart';
 import 'package:itrack/http/service/authservice.dart';
 import 'package:itrack/http/service/authstorage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum AuthState {
   initial,
@@ -435,137 +436,180 @@ class AuthController extends GetxController {
   //   }
   // }
 
-  // Handle successful authentication
-  Future<void> _handleSuccessfulAuth(AuthResponse response) async {
-    _logMethodEntry('_handleSuccessfulAuth');
 
-    try {
-      print('🔍 Validating auth response...');
 
-      if (response.token == null) {
-        throw Exception('No token received in auth response');
-      }
-
-      print('💾 Saving auth response to storage...');
-      await _authStorage.saveAuthResponse(response);
-      print('✅ Auth response saved successfully');
-
-      // Try to extract user data from response
-      User? user;
-
-      if (response.data != null) {
-        try {
-          // Try to get user from response data
-          if (response.data!.containsKey('user')) {
-            user = User.fromJson(response.data!['user']);
-            print('👤 User extracted from response.data.user');
-          } else if (response.data!.containsKey('data') &&
-              response.data!['data'] is Map) {
-            user = User.fromJson(response.data!['data']);
-            print('👤 User extracted from response.data.data');
-          } else {
-            // Try to extract user info from JWT token payload
-            print(
-              '🔍 No user object in response, attempting to extract from JWT token...',
-            );
-            user = _extractUserFromJWT(response.token!);
-          }
-        } catch (e) {
-          print('⚠️ Failed to parse user from response data: $e');
-          // Fallback: try to extract from JWT
-          user = _extractUserFromJWT(response.token!);
-        }
-      } else {
-        print(
-          '⚠️ No response data available, extracting user from JWT token...',
-        );
-        user = _extractUserFromJWT(response.token!);
-      }
-
-      if (user != null) {
-        _currentUser.value = user;
-        print('👤 Current user set: ${user.email ?? user.name ?? "User"}');
-      } else {
-        print('⚠️ Unable to extract user data from response or token');
-        // Create a basic user object if we have the data
-        if (response.data != null) {
-          try {
-            user = User(
-              email: response.data!['email']?.toString(),
-              name: response.data!['name']?.toString(),
-              // Add other fields as needed based on your User model
-            );
-            _currentUser.value = user;
-            print(
-              '👤 Created basic user from available data: ${user.email ?? user.name ?? "User"}',
-            );
-          } catch (e) {
-            print('⚠️ Failed to create basic user: $e');
-          }
-        }
-      }
-
-      _setAuthState(AuthState.authenticated);
-      _tempEmail.value = '';
-
-      // Clear login form
-      _clearLoginForm();
-
-      // Verify token was saved correctly
-      print('🔍 Verifying saved auth data...');
-      final savedToken = await _authStorage.getAuthToken();
-      final savedUser = await _authStorage.getUser();
-
-      print('✅ Token saved: ${savedToken != null}');
-      print('✅ User saved: ${savedUser != null}');
-
-      // Navigate to home
-      print('🏠 Navigating to home screen...');
-      Get.offAllNamed('/company');
-
-      // Show success message
-      _showSnackbar('Welcome!', 'Login successful');
-
-      _logMethodExit('_handleSuccessfulAuth', 'Success');
-    } catch (e) {
-      print('❌ Error in _handleSuccessfulAuth: $e');
-      _setError('Failed to save authentication data');
-      _setAuthState(AuthState.unauthenticated);
-      _logMethodExit('_handleSuccessfulAuth', 'Failed');
+ Future<void> _handleSuccessfulAuth(AuthResponse response) async {
+  try {
+    print('📥 AuthController._handleSuccessfulAuth() - Entry');
+    print('🔍 Validating auth response...');
+    print('🔍 Response object: ${response.toString()}');
+    print('🔍 Response token: ${response.token?.substring(0, 50)}...');  // Print first 50 chars
+    
+    // Save auth response to storage
+    print('💾 Saving auth response to storage...');
+    await _authStorage.saveAuthResponse(response);
+    print('✅ Auth response saved successfully');
+    
+    // Extract and save user data from JWT token
+    print('🔍 About to extract user data from JWT token...');
+    final token = response.token;
+    
+    print('🔍 Token null check: ${token == null}');
+    print('🔍 Token empty check: ${token?.isEmpty ?? true}');
+    
+    if (token != null && token.isNotEmpty) {
+      print('✅ Token is valid, calling _saveUserDataFromToken...');
+      await _saveUserDataFromToken(token);
+      print('✅ _saveUserDataFromToken completed');
+    } else {
+      print('🔴 Token is null or empty! Cannot extract user data.');
     }
+    
+    // Extract user from JWT and set current user
+    print('🔍 Extracting user object from JWT token...');
+    final user = _extractUserFromJWT(token ?? '');
+    if (user != null) {
+      _currentUser.value = user;
+      print('👤 Current user set: ${user.email}');
+    } else {
+      print('🔴 Failed to extract user from JWT');
+    }
+    
+    // Verify saved data
+    print('🔍 Verifying saved auth data...');
+    final isAuth = await _authStorage.isAuthenticated();
+    print('✅ User authenticated: $isAuth');
+    
+    // Verify SharedPreferences
+    print('🔍 Verifying SharedPreferences directly...');
+    final prefs = await SharedPreferences.getInstance();
+    final savedUserId = prefs.getString('userId');
+    final savedUserName = prefs.getString('username');
+    print('🔵 Direct check - userId: $savedUserId');
+    print('🔵 Direct check - username: $savedUserName');
+    
+    // Set authenticated state
+    _setAuthState(AuthState.authenticated);
+    
+    // Navigate to company location selection
+    print('🏠 Navigating to company location selection...');
+    Get.offAllNamed('/company');
+    
+    print('📤 AuthController._handleSuccessfulAuth() - Exit (Success)');
+  } catch (e, stackTrace) {
+    print('🔴 Error in _handleSuccessfulAuth: $e');
+    print('🔴 Stack trace: $stackTrace');
+    throw Exception('Failed to process auth response: $e');
   }
+}
 
-  // Helper method to extract user data from JWT token
-  User? _extractUserFromJWT(String token) {
-    try {
-      // Decode JWT token (basic implementation)
-      final parts = token.split('.');
-      if (parts.length != 3) {
-        print('⚠️ Invalid JWT token format');
-        return null;
-      }
+// Helper method to extract user data from JWT token and save to SharedPreferences
+Future<void> _saveUserDataFromToken(String token) async {
+  try {
+    print('🔍 Extracting user data from JWT token...');
+    
+    // Remove "Bearer " prefix if present
+    final jwtToken = token.replaceFirst('Bearer ', '');
+    
+    // Parse JWT token
+    final parts = jwtToken.split('.');
+    if (parts.length != 3) {
+      print('🔴 Invalid JWT token format');
+      return;
+    }
+    
+    // Decode the payload (second part)
+    final payload = parts[1];
+    
+    // Normalize base64 string (add padding if needed)
+    String normalized = payload;
+    while (normalized.length % 4 != 0) {
+      normalized += '=';
+    }
+    
+    final decoded = utf8.decode(base64Url.decode(normalized));
+    final claims = json.decode(decoded) as Map<String, dynamic>;
+    
+    print('🔍 JWT Claims: ${claims.keys.toList()}');
+    
+    // Extract user data
+    final userId = claims['sub'] as String?;
+    final userName = claims['name'] as String?;
+    final userEmail = claims['email'] as String?;
+    
+    if (userId == null) {
+      print('🔴 No user ID found in token');
+      return;
+    }
+    
+    // Save to SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Save user ID with multiple key formats for compatibility
+    await prefs.setString('user_id', userId);
+    await prefs.setString('userId', userId);
+    
+    // Save other user info
+    if (userName != null) {
+      await prefs.setString('username', userName);
+      await prefs.setString('user_name', userName);
+    }
+    
+    if (userEmail != null) {
+      await prefs.setString('user_email', userEmail);
+      await prefs.setString('email', userEmail);
+    }
+    
+    print('🟢 User data saved from token:');
+    print('   userId: $userId');
+    print('   username: $userName');
+    print('   email: $userEmail');
+    
+  } catch (e) {
+    print('🔴 Error extracting user data from token: $e');
+    print('🔴 Stack trace: ${StackTrace.current}');
+  }
+}
 
-      // Decode payload (second part)
-      final payload = parts[1];
-      // Add padding if needed for base64 decoding
-      final normalizedPayload = base64.normalize(payload);
-      final decoded = utf8.decode(base64.decode(normalizedPayload));
-      final Map<String, dynamic> claims = jsonDecode(decoded);
-
-      print('🔍 JWT Claims: ${claims.keys.toList()}');
-
-      // Extract user information from JWT claims
-      return User(
-        id: claims['sub']?.toString(),
-        name: claims['name']?.toString(),
-        email: claims['email']?.toString(),
-        // Add other fields based on your JWT payload and User model
-      );
-    } catch (e) {
-      print('⚠️ Failed to extract user from JWT: $e');
+// Helper method to extract user object from JWT token (for _currentUser)
+User? _extractUserFromJWT(String token) {
+  try {
+    // Remove "Bearer " prefix if present
+    final jwtToken = token.replaceFirst('Bearer ', '');
+    
+    // Decode JWT token
+    final parts = jwtToken.split('.');
+    if (parts.length != 3) {
+      print('⚠️ Invalid JWT token format');
       return null;
     }
+
+    // Decode payload (second part)
+    final payload = parts[1];
+    
+    // Add padding if needed for base64 decoding
+    String normalized = payload;
+    while (normalized.length % 4 != 0) {
+      normalized += '=';
+    }
+    
+    final decoded = utf8.decode(base64Url.decode(normalized));
+    final Map<String, dynamic> claims = jsonDecode(decoded);
+
+    print('🔍 JWT Claims: ${claims.keys.toList()}');
+
+    // Extract user information from JWT claims
+    return User(
+      id: claims['sub']?.toString(),
+      name: claims['name']?.toString(),
+      email: claims['email']?.toString(),
+      // Add other fields based on your JWT payload and User model
+    );
+  } catch (e) {
+    print('⚠️ Failed to extract user from JWT: $e');
+    return null;
   }
+}
 
   // ===========================================
   // PASSWORD RESET FLOW

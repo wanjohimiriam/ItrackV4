@@ -27,12 +27,19 @@ class AssetResponseModel {
   String? subLocationName;
   String? plantName;
   String? plantCode;
-  
-  // Add these if they exist in your other endpoints
   String? personName;
-  String? email;
-  String? unit;
   String? costCenter;
+  String? unit;
+  String? headofDepartment; // ✅ Added this field
+  
+  String? tenantId;
+  bool? triggerEmailNotification;
+  int? status;
+  String? createDate;
+  String? updateDate;
+  
+  // Additional fields
+  String? email;
   String? locationCodeName;
   String? comments;
   String? currentLocationId;
@@ -65,9 +72,15 @@ class AssetResponseModel {
     this.plantName,
     this.plantCode,
     this.personName,
-    this.email,
-    this.unit,
     this.costCenter,
+    this.unit,
+    this.headofDepartment, // ✅ Added
+    this.tenantId,
+    this.triggerEmailNotification,
+    this.status,
+    this.createDate,
+    this.updateDate,
+    this.email,
     this.locationCodeName,
     this.comments,
     this.currentLocationId,
@@ -102,9 +115,15 @@ class AssetResponseModel {
       plantName: json['plantName'],
       plantCode: json['plantCode'],
       personName: json['personName'],
-      email: json['email'],
-      unit: json['unit'],
       costCenter: json['costCenter'],
+      unit: json['unit'],
+      headofDepartment: json['headofDepartment'], // ✅ Added
+      tenantId: json['tenantId'],
+      triggerEmailNotification: json['triggerEmailNotification'],
+      status: json['status'],
+      createDate: json['createDate'],
+      updateDate: json['updateDate'],
+      email: json['email'],
       locationCodeName: json['locationCodeName'],
       comments: json['comments'],
       currentLocationId: json['currentLocationId'],

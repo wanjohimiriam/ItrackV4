@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:itrack/http/model/assetrequestmodel.dart';
@@ -11,28 +13,28 @@ class AssetService {
   final http.Client _client;
   final AuthMiddleware _authMiddleware;
 
-  AssetService({http.Client? client, AuthMiddleware? authMiddleware}) 
-      : _client = client ?? http.Client(),
-        _authMiddleware = authMiddleware ?? AuthMiddleware.instance;
+  AssetService({http.Client? client, AuthMiddleware? authMiddleware})
+    : _client = client ?? http.Client(),
+      _authMiddleware = authMiddleware ?? AuthMiddleware.instance;
 
   // Get asset by barcode
   Future<AssetResponseModel?> getAssetByBarcode(String barcode) async {
     try {
       final endpoint = ApiEndPoints.getAssetsByBarcode(barcode);
       print('🟡 Fetching asset with endpoint: $endpoint');
-      
+
       final response = await _authMiddleware.get(endpoint);
       print('🔵 API Response Status: ${response.statusCode}');
       print('🔵 API Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         if (data == null || data.isEmpty) {
           print('🟡 No asset found for barcode: $barcode');
           return null;
         }
-        
+
         if (data is List) {
           if (data.isEmpty) {
             print('🟡 Empty list returned for barcode: $barcode');
@@ -41,10 +43,10 @@ class AssetService {
           print('🟡 List response, using first item');
           return AssetResponseModel.fromJson(data.first);
         }
-        
+
         if (data is Map<String, dynamic>) {
-          if (data['assetDescription'] == null || 
-              data['assetDescription'] == 'null' || 
+          if (data['assetDescription'] == null ||
+              data['assetDescription'] == 'null' ||
               (data['assetDescription'] as String).isEmpty) {
             print('🟡 Asset found but has empty description');
             return null;
@@ -52,10 +54,9 @@ class AssetService {
           print('🟡 Single object response found with valid data');
           return AssetResponseModel.fromJson(data);
         }
-        
+
         print('🟡 Unknown response format: $data');
         return null;
-        
       } else if (response.statusCode == 404) {
         print('🟡 404 - Asset not found for barcode: $barcode');
         return null;
@@ -74,9 +75,9 @@ class AssetService {
     try {
       print('🟡 Fetching plants');
       final response = await _authMiddleware.get(ApiEndPoints.getPlants);
-      
+
       print('🔵 Plants Response Status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final configResponse = ConfigResponse.fromJson(
           json.decode(response.body),
@@ -98,9 +99,9 @@ class AssetService {
     try {
       print('🟡 Fetching departments');
       final response = await _authMiddleware.get(ApiEndPoints.getDepartments);
-      
+
       print('🔵 Departments Response Status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final configResponse = ConfigResponse.fromJson(
           json.decode(response.body),
@@ -122,9 +123,9 @@ class AssetService {
     try {
       print('🟡 Fetching cost centres');
       final response = await _authMiddleware.get(ApiEndPoints.getCostCentres);
-      
+
       print('🔵 Cost Centres Response Status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final configResponse = ConfigResponse.fromJson(
           json.decode(response.body),
@@ -146,9 +147,9 @@ class AssetService {
     try {
       print('🟡 Fetching asset types');
       final response = await _authMiddleware.get(ApiEndPoints.getAssetTypes);
-      
+
       print('🔵 Asset Types Response Status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final configResponse = ConfigResponse.fromJson(
           json.decode(response.body),
@@ -170,9 +171,9 @@ class AssetService {
     try {
       print('🟡 Fetching conditions');
       final response = await _authMiddleware.get(ApiEndPoints.getConditions);
-      
+
       print('🔵 Conditions Response Status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final configResponse = ConfigResponse.fromJson(
           json.decode(response.body),
@@ -194,7 +195,7 @@ class AssetService {
     try {
       print('🟡 Creating new asset: ${request.assetDescription}');
       print('🟡 Request data: ${request.toJson()}');
-      
+
       final response = await _authMiddleware.post(
         ApiEndPoints.AddAssets,
         body: request.toJson(),
@@ -205,7 +206,7 @@ class AssetService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
-        
+
         if (data is List && data.isNotEmpty) {
           return AssetResponseModel.fromJson(data.first);
         } else if (data is Map<String, dynamic>) {
@@ -216,7 +217,9 @@ class AssetService {
       } else {
         final errorBody = response.body;
         print('🔴 Create Asset Failed: ${response.statusCode} - $errorBody');
-        throw Exception('Failed to create asset: ${response.statusCode} - $errorBody');
+        throw Exception(
+          'Failed to create asset: ${response.statusCode} - $errorBody',
+        );
       }
     } catch (e) {
       print('🔴 Error creating asset: $e');
@@ -229,7 +232,7 @@ class AssetService {
     try {
       print('🟡 Updating asset: ${request.assetDescription}');
       print('🟡 Request data: ${request.toJson()}');
-      
+
       final response = await _authMiddleware.put(
         ApiEndPoints.updateAsset,
         body: request.toJson(),
@@ -240,7 +243,7 @@ class AssetService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         if (data is List && data.isNotEmpty) {
           return AssetResponseModel.fromJson(data.first);
         } else if (data is Map<String, dynamic>) {
@@ -251,7 +254,9 @@ class AssetService {
       } else {
         final errorBody = response.body;
         print('🔴 Update Asset Failed: ${response.statusCode} - $errorBody');
-        throw Exception('Failed to update asset: ${response.statusCode} - $errorBody');
+        throw Exception(
+          'Failed to update asset: ${response.statusCode} - $errorBody',
+        );
       }
     } catch (e) {
       print('🔴 Error updating asset: $e');
@@ -259,55 +264,57 @@ class AssetService {
     }
   }
 
-  // Audit asset
   Future<void> auditAsset(AuditAssetRequestModel request) async {
     try {
-      print('🟡 Auditing asset');
-      
+      print('🟡 Auditing asset: ${request.barcode}');
+      print('🟡 Audit request data: ${request.toJson()}');
+
       final response = await _authMiddleware.post(
-        ApiEndPoints.updateAsset,
+        ApiEndPoints.updateAsset, // ✅ THIS MUST BE assetAudit, NOT updateAsset
         body: request.toJson(),
       );
 
       print('🔵 Audit Asset Response Status: ${response.statusCode}');
+      print('🔵 Audit Asset Response Body: ${response.body}');
 
       if (response.statusCode != 200 && response.statusCode != 201) {
         final errorBody = response.body;
         print('🔴 Audit Asset Failed: ${response.statusCode} - $errorBody');
-        throw Exception('Failed to audit asset: ${response.statusCode} - $errorBody');
+        throw Exception(
+          'Failed to audit asset: ${response.statusCode} - $errorBody',
+        );
       }
-      
+
       print('🟢 Audit completed successfully');
     } catch (e) {
       print('🔴 Error auditing asset: $e');
       throw Exception('Error auditing asset: $e');
     }
   }
-  // Add this method to AssetService class
 
-// Get Persons
-Future<List<PersonModel>> getPersons() async {
-  try {
-    print('🟡 Fetching persons');
-    final response = await _authMiddleware.get(ApiEndPoints.getPersons);
-    
-    print('🔵 Persons Response Status: ${response.statusCode}');
-    
-    if (response.statusCode == 200) {
-      final configResponse = ConfigResponse.fromJson(
-        json.decode(response.body),
-        (json) => PersonModel.fromJson(json),
-      );
-      print('🟢 Fetched ${configResponse.data.length} persons');
-      return configResponse.data;
-    } else {
-      throw Exception('Failed to load persons: ${response.statusCode}');
+  // Get Persons
+  Future<List<PersonModel>> getPersons() async {
+    try {
+      print('🟡 Fetching persons');
+      final response = await _authMiddleware.get(ApiEndPoints.getPersons);
+
+      print('🔵 Persons Response Status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final configResponse = ConfigResponse.fromJson(
+          json.decode(response.body),
+          (json) => PersonModel.fromJson(json),
+        );
+        print('🟢 Fetched ${configResponse.data.length} persons');
+        return configResponse.data;
+      } else {
+        throw Exception('Failed to load persons: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('🔴 Error fetching persons: $e');
+      throw Exception('Error fetching persons: $e');
     }
-  } catch (e) {
-    print('🔴 Error fetching persons: $e');
-    throw Exception('Error fetching persons: $e');
   }
-}
 
   void dispose() {
     _client.close();
