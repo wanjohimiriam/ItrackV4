@@ -6,6 +6,7 @@ import 'package:itrack/views/auth/forgotpassword.dart';
 import 'package:itrack/views/auth/login.dart';
 import 'package:itrack/views/auth/reset.dart';
 import 'package:itrack/views/home/company.dart';
+import 'package:itrack/views/home/listofAuditedAssets.dart';
 import 'package:itrack/views/home/mainscreen.dart';
 import 'package:itrack/views/widget/colors.dart';
 
@@ -65,6 +66,10 @@ class MyApp extends StatelessWidget {
           name: "/reset-password",
           page: () => ResetPasswordScreen(),
         ),
+        GetPage(
+          name: "/assets-list",
+          page: () => ListofTodaysAudit(),
+        ),
       ],
       initialRoute: "/login",
       unknownRoute: GetPage(
@@ -91,7 +96,7 @@ class MyApp extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () => Get.offAllNamed('/login'),  // ✅ Changed from /home to /login
+                  onPressed: () => Get.offAllNamed('/company'),  // ✅ Changed from /home to /login
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.primary,

@@ -297,7 +297,7 @@ class AuthController extends GetxController {
   // LOGIN & AUTHENTICATION FLOW
   // ===========================================
 
-  // Main login method - ENHANCED with better first login detection
+  // Main login method
   Future<void> login() async {
     if (loginFormKey.currentState == null ||
         !loginFormKey.currentState!.validate()) {
@@ -328,7 +328,6 @@ class AuthController extends GetxController {
         print('🔍 Checking first login status: ${response.isFirstLogin}');
         print('🔍 Response data: ${response.data}');
 
-        // UNCOMMENTED AND ENHANCED first login detection with multiple checks
         bool isFirstLogin = false;
 
         // Check multiple possible sources for first login flag
@@ -336,7 +335,6 @@ class AuthController extends GetxController {
           print('🆕 First login detected from response.isFirstLogin');
           isFirstLogin = true;
         } else if (response.data != null) {
-          // Check various possible field names from API response
           final data = response.data!;
           if (data['isFirstLogin'] == true ||
               data['is_first_login'] == true ||
@@ -351,14 +349,10 @@ class AuthController extends GetxController {
           print('🆕 FIRST TIME LOGIN DETECTED - Redirecting to password reset');
           _tempEmail.value = email;
           _setAuthState(AuthState.firstTimeLogin);
+          _setError('First time login: Please reset your password to continue');
 
           print('🔄 Navigating to first login reset screen...');
           Get.toNamed('/first-login-reset');
-          _showSnackbar(
-            'First Time Login',
-            'Please reset your password to continue',
-            isSuccess: false,
-          );
           _logMethodExit('login', 'First login redirect');
         } else {
           print('✅ Regular login - processing auth data...');
@@ -381,235 +375,173 @@ class AuthController extends GetxController {
     }
   }
 
-  // UNCOMMENTED Handle first time login reset - ENHANCED
-  // Future<void> firstTimeLoginReset() async {
-  //   if (firstLoginFormKey.currentState == null || !firstLoginFormKey.currentState!.validate()) {
-  //     return;
-  //   }
-
-  //   final email = _tempEmail.value;
-  //   final tempPassword = temporaryPasswordController.text.trim();
-  //   final newPassword = newPasswordController.text.trim();
-  //   final confirmPassword = confirmPasswordController.text.trim();
-
-  //   _logMethodEntry('firstTimeLoginReset', {'email': email});
-
-  //   try {
-  //     _setLoading(true);
-  //     _clearError();
-
-  //     if (newPassword != confirmPassword) {
-  //       print('❌ Password mismatch');
-  //       _setError('Passwords do not match');
-  //       _logMethodExit('firstTimeLoginReset', 'Password mismatch');
-  //       return;
-  //     }
-
-  //     print('🔐 Creating first login reset request...');
-  //     final request = FirstLoginRequest(
-  //       email: email,
-  //       temporaryPassword: tempPassword,
-  //       newPassword: newPassword,
-  //       confirmPassword: confirmPassword,
-  //     );
-
-  //     print('🌐 Calling auth service first login attempt...');
-  //     final response = await _authService.firstLoginAttempt(request);
-
-  //     if (response.success) {
-  //       print('✅ First login reset successful');
-  //       await _handleSuccessfulAuth(response);
-
-  //       _showSnackbar('Success', 'Password reset successfully! Welcome aboard.');
-  //       _logMethodExit('firstTimeLoginReset', 'Success');
-  //     } else {
-  //       print('❌ First login reset failed: ${response.message}');
-  //       _setError(response.message ?? 'Password reset failed');
-  //       _logMethodExit('firstTimeLoginReset', 'Failed');
-  //     }
-  //   } catch (e) {
-  //     print('❌ First login reset exception: $e');
-  //     _setError('An error occurred during password reset');
-  //     _logMethodExit('firstTimeLoginReset', 'Exception');
-  //   } finally {
-  //     _setLoading(false);
-  //   }
-  // }
-
-
-
- Future<void> _handleSuccessfulAuth(AuthResponse response) async {
-  try {
-    print('📥 AuthController._handleSuccessfulAuth() - Entry');
-    print('🔍 Validating auth response...');
-    print('🔍 Response object: ${response.toString()}');
-    print('🔍 Response token: ${response.token?.substring(0, 50)}...');  // Print first 50 chars
-    
-    // Save auth response to storage
-    print('💾 Saving auth response to storage...');
-    await _authStorage.saveAuthResponse(response);
-    print('✅ Auth response saved successfully');
-    
-    // Extract and save user data from JWT token
-    print('🔍 About to extract user data from JWT token...');
-    final token = response.token;
-    
-    print('🔍 Token null check: ${token == null}');
-    print('🔍 Token empty check: ${token?.isEmpty ?? true}');
-    
-    if (token != null && token.isNotEmpty) {
-      print('✅ Token is valid, calling _saveUserDataFromToken...');
-      await _saveUserDataFromToken(token);
-      print('✅ _saveUserDataFromToken completed');
-    } else {
-      print('🔴 Token is null or empty! Cannot extract user data.');
+  Future<void> _handleSuccessfulAuth(AuthResponse response) async {
+    try {
+      print('📥 AuthController._handleSuccessfulAuth() - Entry');
+      print('🔍 Validating auth response...');
+      print('🔍 Response token: ${response.token?.substring(0, 50)}...');
+      
+      // Save auth response to storage
+      print('💾 Saving auth response to storage...');
+      await _authStorage.saveAuthResponse(response);
+      print('✅ Auth response saved successfully');
+      
+      // Extract and save user data from JWT token
+      print('🔍 About to extract user data from JWT token...');
+      final token = response.token;
+      
+      if (token != null && token.isNotEmpty) {
+        print('✅ Token is valid, calling _saveUserDataFromToken...');
+        await _saveUserDataFromToken(token);
+        print('✅ _saveUserDataFromToken completed');
+      } else {
+        print('🔴 Token is null or empty! Cannot extract user data.');
+      }
+      
+      // Extract user from JWT and set current user
+      print('🔍 Extracting user object from JWT token...');
+      final user = _extractUserFromJWT(token ?? '');
+      if (user != null) {
+        _currentUser.value = user;
+        print('👤 Current user set: ${user.email}');
+      } else {
+        print('🔴 Failed to extract user from JWT');
+      }
+      
+      // Verify saved data
+      print('🔍 Verifying saved auth data...');
+      final isAuth = await _authStorage.isAuthenticated();
+      print('✅ User authenticated: $isAuth');
+      
+      // Verify SharedPreferences
+      print('🔍 Verifying SharedPreferences directly...');
+      final prefs = await SharedPreferences.getInstance();
+      final savedUserId = prefs.getString('userId');
+      final savedUserName = prefs.getString('username');
+      print('🔵 Direct check - userId: $savedUserId');
+      print('🔵 Direct check - username: $savedUserName');
+      
+      // Set authenticated state
+      _setAuthState(AuthState.authenticated);
+      
+      // Navigate to company location selection
+      print('🏠 Navigating to company location selection...');
+      Get.offAllNamed('/company');
+      
+      print('📤 AuthController._handleSuccessfulAuth() - Exit (Success)');
+    } catch (e, stackTrace) {
+      print('🔴 Error in _handleSuccessfulAuth: $e');
+      print('🔴 Stack trace: $stackTrace');
+      throw Exception('Failed to process auth response: $e');
     }
-    
-    // Extract user from JWT and set current user
-    print('🔍 Extracting user object from JWT token...');
-    final user = _extractUserFromJWT(token ?? '');
-    if (user != null) {
-      _currentUser.value = user;
-      print('👤 Current user set: ${user.email}');
-    } else {
-      print('🔴 Failed to extract user from JWT');
-    }
-    
-    // Verify saved data
-    print('🔍 Verifying saved auth data...');
-    final isAuth = await _authStorage.isAuthenticated();
-    print('✅ User authenticated: $isAuth');
-    
-    // Verify SharedPreferences
-    print('🔍 Verifying SharedPreferences directly...');
-    final prefs = await SharedPreferences.getInstance();
-    final savedUserId = prefs.getString('userId');
-    final savedUserName = prefs.getString('username');
-    print('🔵 Direct check - userId: $savedUserId');
-    print('🔵 Direct check - username: $savedUserName');
-    
-    // Set authenticated state
-    _setAuthState(AuthState.authenticated);
-    
-    // Navigate to company location selection
-    print('🏠 Navigating to company location selection...');
-    Get.offAllNamed('/company');
-    
-    print('📤 AuthController._handleSuccessfulAuth() - Exit (Success)');
-  } catch (e, stackTrace) {
-    print('🔴 Error in _handleSuccessfulAuth: $e');
-    print('🔴 Stack trace: $stackTrace');
-    throw Exception('Failed to process auth response: $e');
   }
-}
 
-// Helper method to extract user data from JWT token and save to SharedPreferences
-Future<void> _saveUserDataFromToken(String token) async {
-  try {
-    print('🔍 Extracting user data from JWT token...');
-    
-    // Remove "Bearer " prefix if present
-    final jwtToken = token.replaceFirst('Bearer ', '');
-    
-    // Parse JWT token
-    final parts = jwtToken.split('.');
-    if (parts.length != 3) {
-      print('🔴 Invalid JWT token format');
-      return;
+  // Helper method to extract user data from JWT token and save to SharedPreferences
+  Future<void> _saveUserDataFromToken(String token) async {
+    try {
+      print('🔍 Extracting user data from JWT token...');
+      
+      // Remove "Bearer " prefix if present
+      final jwtToken = token.replaceFirst('Bearer ', '');
+      
+      // Parse JWT token
+      final parts = jwtToken.split('.');
+      if (parts.length != 3) {
+        print('🔴 Invalid JWT token format');
+        return;
+      }
+      
+      // Decode the payload (second part)
+      final payload = parts[1];
+      
+      // Normalize base64 string (add padding if needed)
+      String normalized = payload;
+      while (normalized.length % 4 != 0) {
+        normalized += '=';
+      }
+      
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final claims = json.decode(decoded) as Map<String, dynamic>;
+      
+      print('🔍 JWT Claims: ${claims.keys.toList()}');
+      
+      // Extract user data
+      final userId = claims['sub'] as String?;
+      final userName = claims['name'] as String?;
+      final userEmail = claims['email'] as String?;
+      
+      if (userId == null) {
+        print('🔴 No user ID found in token');
+        return;
+      }
+      
+      // Save to SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Save user ID with multiple key formats for compatibility
+      await prefs.setString('user_id', userId);
+      await prefs.setString('userId', userId);
+      
+      // Save other user info
+      if (userName != null) {
+        await prefs.setString('username', userName);
+        await prefs.setString('user_name', userName);
+      }
+      
+      if (userEmail != null) {
+        await prefs.setString('user_email', userEmail);
+        await prefs.setString('email', userEmail);
+      }
+      
+      print('🟢 User data saved from token:');
+      print('   userId: $userId');
+      print('   username: $userName');
+      print('   email: $userEmail');
+      
+    } catch (e) {
+      print('🔴 Error extracting user data from token: $e');
+      print('🔴 Stack trace: ${StackTrace.current}');
     }
-    
-    // Decode the payload (second part)
-    final payload = parts[1];
-    
-    // Normalize base64 string (add padding if needed)
-    String normalized = payload;
-    while (normalized.length % 4 != 0) {
-      normalized += '=';
-    }
-    
-    final decoded = utf8.decode(base64Url.decode(normalized));
-    final claims = json.decode(decoded) as Map<String, dynamic>;
-    
-    print('🔍 JWT Claims: ${claims.keys.toList()}');
-    
-    // Extract user data
-    final userId = claims['sub'] as String?;
-    final userName = claims['name'] as String?;
-    final userEmail = claims['email'] as String?;
-    
-    if (userId == null) {
-      print('🔴 No user ID found in token');
-      return;
-    }
-    
-    // Save to SharedPreferences
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Save user ID with multiple key formats for compatibility
-    await prefs.setString('user_id', userId);
-    await prefs.setString('userId', userId);
-    
-    // Save other user info
-    if (userName != null) {
-      await prefs.setString('username', userName);
-      await prefs.setString('user_name', userName);
-    }
-    
-    if (userEmail != null) {
-      await prefs.setString('user_email', userEmail);
-      await prefs.setString('email', userEmail);
-    }
-    
-    print('🟢 User data saved from token:');
-    print('   userId: $userId');
-    print('   username: $userName');
-    print('   email: $userEmail');
-    
-  } catch (e) {
-    print('🔴 Error extracting user data from token: $e');
-    print('🔴 Stack trace: ${StackTrace.current}');
   }
-}
 
-// Helper method to extract user object from JWT token (for _currentUser)
-User? _extractUserFromJWT(String token) {
-  try {
-    // Remove "Bearer " prefix if present
-    final jwtToken = token.replaceFirst('Bearer ', '');
-    
-    // Decode JWT token
-    final parts = jwtToken.split('.');
-    if (parts.length != 3) {
-      print('⚠️ Invalid JWT token format');
+  // Helper method to extract user object from JWT token (for _currentUser)
+  User? _extractUserFromJWT(String token) {
+    try {
+      // Remove "Bearer " prefix if present
+      final jwtToken = token.replaceFirst('Bearer ', '');
+      
+      // Decode JWT token
+      final parts = jwtToken.split('.');
+      if (parts.length != 3) {
+        print('⚠️ Invalid JWT token format');
+        return null;
+      }
+
+      // Decode payload (second part)
+      final payload = parts[1];
+      
+      // Add padding if needed for base64 decoding
+      String normalized = payload;
+      while (normalized.length % 4 != 0) {
+        normalized += '=';
+      }
+      
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final Map<String, dynamic> claims = jsonDecode(decoded);
+
+      print('🔍 JWT Claims: ${claims.keys.toList()}');
+
+      // Extract user information from JWT claims
+      return User(
+        id: claims['sub']?.toString(),
+        name: claims['name']?.toString(),
+        email: claims['email']?.toString(),
+      );
+    } catch (e) {
+      print('⚠️ Failed to extract user from JWT: $e');
       return null;
     }
-
-    // Decode payload (second part)
-    final payload = parts[1];
-    
-    // Add padding if needed for base64 decoding
-    String normalized = payload;
-    while (normalized.length % 4 != 0) {
-      normalized += '=';
-    }
-    
-    final decoded = utf8.decode(base64Url.decode(normalized));
-    final Map<String, dynamic> claims = jsonDecode(decoded);
-
-    print('🔍 JWT Claims: ${claims.keys.toList()}');
-
-    // Extract user information from JWT claims
-    return User(
-      id: claims['sub']?.toString(),
-      name: claims['name']?.toString(),
-      email: claims['email']?.toString(),
-      // Add other fields based on your JWT payload and User model
-    );
-  } catch (e) {
-    print('⚠️ Failed to extract user from JWT: $e');
-    return null;
   }
-}
 
   // ===========================================
   // PASSWORD RESET FLOW
@@ -630,7 +562,6 @@ User? _extractUserFromJWT(String token) {
       final request = ForgotPasswordRequest(email: email);
       final response = await _authService.forgotPassword(request);
 
-      // Enhanced debug logging
       print('=== FORGOT PASSWORD API Response Debug ===');
       print('Response success: ${response.success}');
       print('Response message: ${response.message}');
@@ -649,8 +580,6 @@ User? _extractUserFromJWT(String token) {
 
         _tempEmail.value = email;
         _setAuthState(AuthState.resetPassword);
-
-        _showSnackbar('Success', 'Reset code sent to your email');
 
         // Navigate to reset password screen with email
         Get.toNamed('/reset-password', arguments: {'email': email});
@@ -675,39 +604,35 @@ User? _extractUserFromJWT(String token) {
     // Get email from arguments or stored email
     final email = Get.arguments?['email'] ?? _tempEmail.value;
 
-    // Manual validation since we might not have a form
+    // Manual validation
     if (email.isEmpty) {
-      _showSnackbar('Error', 'Email is required', isSuccess: false);
+      _setError('Email is required');
       return;
     }
 
     if (otpController.text.trim().isEmpty) {
-      _showSnackbar('Error', 'OTP is required', isSuccess: false);
+      _setError('OTP is required');
       return;
     }
 
     if (resetNewPasswordController.text.trim().isEmpty) {
-      _showSnackbar('Error', 'New password is required', isSuccess: false);
+      _setError('New password is required');
       return;
     }
 
     if (resetNewPasswordController.text.trim().length < 8) {
-      _showSnackbar(
-        'Error',
-        'Password must be at least 8 characters',
-        isSuccess: false,
-      );
+      _setError('Password must be at least 8 characters');
       return;
     }
 
     if (resetConfirmPasswordController.text.trim().isEmpty) {
-      _showSnackbar('Error', 'Please confirm your password', isSuccess: false);
+      _setError('Please confirm your password');
       return;
     }
 
     if (resetNewPasswordController.text.trim() !=
         resetConfirmPasswordController.text.trim()) {
-      _showSnackbar('Error', 'Passwords do not match', isSuccess: false);
+      _setError('Passwords do not match');
       return;
     }
 
@@ -755,7 +680,7 @@ User? _extractUserFromJWT(String token) {
     final email = Get.arguments?['email'] ?? _tempEmail.value;
 
     if (email.isEmpty) {
-      _showSnackbar('Error', 'Email not found', isSuccess: false);
+      _setError('Email not found');
       return;
     }
 
@@ -769,7 +694,8 @@ User? _extractUserFromJWT(String token) {
       _setLoading(false);
 
       if (response.success) {
-        _showSnackbar('Success', 'Reset code sent again to your email');
+        // Clear any previous errors on success
+        _clearError();
         _logMethodExit('resendCode', 'Success');
       } else {
         _setError(response.message ?? 'Failed to resend code');
@@ -904,22 +830,6 @@ User? _extractUserFromJWT(String token) {
   // UI HELPER METHODS
   // ===========================================
 
-  // Show snackbar with consistent styling
-  void _showSnackbar(String title, String message, {bool isSuccess = true}) {
-    Get.snackbar(
-      title,
-      message,
-      backgroundColor: isSuccess ? Colors.green : Colors.red,
-      colorText: Colors.white,
-      snackPosition: SnackPosition.TOP,
-      icon: Icon(
-        isSuccess ? Icons.check_circle : Icons.error,
-        color: Colors.white,
-      ),
-      duration: Duration(seconds: 3),
-    );
-  }
-
   // Success dialog for password reset
   Future<void> _showPasswordResetSuccessDialog() async {
     await Get.dialog(
@@ -990,7 +900,7 @@ User? _extractUserFromJWT(String token) {
           ),
         ),
       ),
-      barrierDismissible: false, // Prevent dismissing by tapping outside
+      barrierDismissible: false,
     );
   }
 

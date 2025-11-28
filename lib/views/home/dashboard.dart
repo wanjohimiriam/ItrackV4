@@ -139,8 +139,8 @@ class DashboardScreen extends StatelessWidget {
               title: 'Settings',
               color: AppColors.textSecondary,
               onTap: () {
-                Get.back();
-                Get.toNamed('/settings');
+                // Get.back();
+                // Get.toNamed('/settings');
               },
             ),
             _buildDrawerItem(
@@ -148,8 +148,8 @@ class DashboardScreen extends StatelessWidget {
               title: 'Help & Support',
               color: AppColors.textSecondary,
               onTap: () {
-                Get.back();
-                Get.toNamed('/help');
+                // Get.back();
+                // Get.toNamed('/help');
               },
             ),
             const Divider(),

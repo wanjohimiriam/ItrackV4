@@ -15,9 +15,12 @@ class CaptureScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Get.back(),
+        leading: GestureDetector(
+          onTap: () => Get.back(),
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Get.back(),
+          ),
         ),
         title: const Text(
           'Asset Audit & Capture',
@@ -263,123 +266,315 @@ class CaptureScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUserDetailsCard(CaptureController controller) {
-    return _buildCard(
-      'User Details',
-      Icons.people,
-      [
-        // REPLACED: Person dropdown with searchable field
-        InkWell(
-          onTap: controller.showPersonSearchDialog,
-          borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.person, color: AppColors.primary, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Obx(() => Text(
-                    controller.selectedPerson.value.isEmpty
-                        ? 'Select Person'
-                        : controller.selectedPerson.value,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: controller.selectedPerson.value.isEmpty
-                          ? AppColors.textSecondary
-                          : AppColors.textPrimary,
-                    ),
-                  )),
-                ),
-                const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
-              ],
-            ),
+ Widget _buildUserDetailsCard(CaptureController controller) {
+  return _buildCard(
+    'User Details',
+    Icons.people,
+    [
+      // Person search field
+      InkWell(
+        onTap: controller.showPersonSearchDialog,
+        borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.person, color: AppColors.primary, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Obx(() => Text(
+                  controller.selectedPerson.value.isEmpty
+                      ? 'Select Person'
+                      : controller.selectedPerson.value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: controller.selectedPerson.value.isEmpty
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                  ),
+                )),
+              ),
+              const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Obx(
-          () => _buildDropdown(
-            label: 'Department',
-            value: controller.selectedDepartment.value.isEmpty
-                ? null
-                : controller.selectedDepartment.value,
-            items: controller.departmentList,
-            onChanged: controller.onDepartmentSelected,
-            prefixIcon: Icons.corporate_fare,
+      ),
+      const SizedBox(height: 12),
+      Obx(
+        () => _buildDropdown(
+          label: 'Department',
+          value: controller.selectedDepartment.value.isEmpty
+              ? null
+              : controller.selectedDepartment.value,
+          items: controller.departmentList,
+          onChanged: controller.onDepartmentSelected,
+          prefixIcon: Icons.corporate_fare,
+        ),
+      ),
+      const SizedBox(height: 12),
+      _buildTextField(
+        controller: controller.emailController,
+        label: 'Email',
+        prefixIcon: Icons.email,
+        enabled: false,
+      ),
+      const SizedBox(height: 12),
+      // ✅ Head of Department field - displays value from API
+      Obx(
+        () => _buildTextField(
+          controller: TextEditingController(
+            text: controller.selectedHeadDepartment.value,
           ),
-        ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: controller.emailController,
-          label: 'Email',
-          prefixIcon: Icons.email,
+          label: 'Department Head',
+          prefixIcon: Icons.badge,
           enabled: false,
         ),
-        const SizedBox(height: 12),
-        Obx(
-          () => _buildTextField(
-            controller: TextEditingController(
-              text: controller.selectedHeadDepartment.value,
-            ),
-            label: 'Department Head',
-            prefixIcon: Icons.badge,
-            enabled: false,
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: controller.unitController,
-          label: 'Unit',
-          prefixIcon: Icons.business_center,
-          enabled: false,
-        ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: controller.costCenterController,
-          label: 'Cost Center',
-          prefixIcon: Icons.account_balance,
-          enabled: false,
-        ),
-      ],
-    );
-  }
+      ),
+      const SizedBox(height: 12),
+      _buildTextField(
+        controller: controller.unitController,
+        label: 'Unit',
+        prefixIcon: Icons.business_center,
+        enabled: false,
+      ),
+      const SizedBox(height: 12),
+      _buildTextField(
+        controller: controller.costCenterController,
+        label: 'Cost Center',
+        prefixIcon: Icons.account_balance,
+        enabled: false,
+      ),
+    ],
+  );
+}
+  
 
   Widget _buildAdditionalInfoCard(CaptureController controller) {
-    return _buildCard(
-      'Additional Information',
-      Icons.info_outline,
-      [
-        Obx(
-          () => _buildDropdown(
-            label: 'Condition',
-            value: controller.selectedCondition.value.isEmpty
-                ? null
-                : controller.selectedCondition.value,
-            items: controller.conditionList,
-            onChanged: controller.onConditionSelected,
-            prefixIcon: Icons.health_and_safety,
-          ),
+  return _buildCard(
+    'Additional Information',
+    Icons.info_outline,
+    [
+      Obx(
+        () => _buildDropdown(
+          label: 'Condition',
+          value: controller.selectedCondition.value.isEmpty
+              ? null
+              : controller.selectedCondition.value,
+          items: controller.conditionList,
+          onChanged: controller.onConditionSelected,
+          prefixIcon: Icons.health_and_safety,
         ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: controller.commentController,
-          label: 'Comments',
-          prefixIcon: Icons.comment,
-          maxLines: 3,
-        ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: controller.purchasePriceController,
-          label: 'Purchase Price',
-          prefixIcon: Icons.attach_money,
-        ),
-      ],
-    );
-  }
+      ),
+      
+      // ✅ NEW: Conditional Approvers Section
+      Obx(() {
+        if (!controller.showApproversField.value) {
+          return const SizedBox.shrink();
+        }
+        
+        return Column(
+          children: [
+            const SizedBox(height: 16),
+            
+            // Warning banner
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                border: Border.all(color: Colors.orange.shade200),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange.shade700),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'This condition change requires approval',
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // Approvers selection button
+            InkWell(
+              onTap: controller.showApproversDialog,
+              borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: controller.selectedApprovers.isEmpty 
+                        ? Colors.orange.shade300 
+                        : AppColors.border,
+                    width: controller.selectedApprovers.isEmpty ? 2 : 1,
+                  ),
+                  borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.approval,
+                      color: controller.selectedApprovers.isEmpty 
+                          ? Colors.orange 
+                          : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Obx(() => Text(
+                        controller.selectedApprovers.isEmpty
+                            ? 'Select Approvers *'
+                            : '${controller.selectedApprovers.length} Approver(s) Selected',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: controller.selectedApprovers.isEmpty
+                              ? Colors.orange.shade700
+                              : AppColors.textPrimary,
+                          fontWeight: controller.selectedApprovers.isEmpty 
+                              ? FontWeight.w500 
+                              : FontWeight.normal,
+                        ),
+                      )),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, 
+                        color: AppColors.textSecondary, size: 16),
+                  ],
+                ),
+              ),
+            ),
+            
+            // ✅ NEW: Display selected approvers as chips
+            Obx(() {
+              if (controller.selectedApprovers.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Selected Approvers:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: controller.selectedApprovers.map((approverId) {
+                      // Find the person details for this approver
+                      final person = controller.personModels.firstWhere(
+                        (p) => p.id == approverId,
+                        orElse: () => controller.personModels.first,
+                      );
+                      
+                      final personName = person.displayName.isNotEmpty 
+                          ? person.displayName 
+                          : person.fullName;
+                      
+                      return Chip(
+                        avatar: CircleAvatar(
+                          backgroundColor: AppColors.primary,
+                          child: Text(
+                            personName.substring(0, 1).toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        label: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              personName,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (person.staffEmail.isNotEmpty)
+                              Text(
+                                person.staffEmail,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                          ],
+                        ),
+                        deleteIcon: const Icon(
+                          Icons.cancel,
+                          size: 18,
+                        ),
+                        onDeleted: () {
+                          controller.selectedApprovers.remove(approverId);
+                        },
+                        backgroundColor: Colors.green.shade50,
+                        deleteIconColor: Colors.red.shade400,
+                        side: BorderSide(
+                          color: Colors.green.shade200,
+                          width: 1,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              );
+            }),
+            
+            const SizedBox(height: 12),
+            
+            // Condition change notes
+            _buildTextField(
+              controller: controller.conditionNotesController,
+              label: 'Condition Change Notes',
+              prefixIcon: Icons.note,
+              maxLines: 3,
+            ),
+          ],
+        );
+      }),
+      
+      const SizedBox(height: 12),
+      _buildTextField(
+        controller: controller.commentController,
+        label: 'Comments',
+        prefixIcon: Icons.comment,
+        maxLines: 3,
+      ),
+      const SizedBox(height: 12),
+      _buildTextField(
+        controller: controller.purchasePriceController,
+        label: 'Purchase Price',
+        prefixIcon: Icons.attach_money,
+      ),
+    ],
+  );
+}
 
   Widget _buildSaveButton(CaptureController controller) {
     return Padding(

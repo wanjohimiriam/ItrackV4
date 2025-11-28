@@ -13,6 +13,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isEmailFocused = false;
   bool _isPasswordFocused = false;
+  final RxBool _isFormValid = false.obs;
 
   late final AuthController authController;
 
@@ -20,6 +21,23 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     authController = Get.find<AuthController>();
+    
+    // Add listeners to text controllers to track form validity
+    authController.loginEmailController.addListener(_validateForm);
+    authController.loginPasswordController.addListener(_validateForm);
+  }
+
+  @override
+  void dispose() {
+    authController.loginEmailController.removeListener(_validateForm);
+    authController.loginPasswordController.removeListener(_validateForm);
+    super.dispose();
+  }
+
+  void _validateForm() {
+    final email = authController.loginEmailController.text.trim();
+    final password = authController.loginPasswordController.text.trim();
+    _isFormValid.value = email.isNotEmpty && password.isNotEmpty;
   }
 
   void _handleLogin() async {
@@ -212,7 +230,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: authController.loginPasswordController,
                         obscureText: authController.obscureLoginPassword.value,
                         textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _handleLogin(),
+                        onFieldSubmitted: (_) {
+                          if (_isFormValid.value && !authController.isLoading) {
+                            _handleLogin();
+                          }
+                        },
                         validator: (value) {
                           if (value?.isEmpty ?? true) {
                             return 'Password is required';
@@ -310,20 +332,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // Login button
                   Obx(() {
+                    final isEnabled = _isFormValid.value && !authController.isLoading;
+                    
                     return SizedBox(
                       width: double.infinity,
                       height: 56,
                       child: ElevatedButton(
-                        onPressed: authController.isLoading
-                            ? null
-                            : _handleLogin,
+                        onPressed: isEnabled ? _handleLogin : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
-                          disabledBackgroundColor: AppColors.textSecondary,
+                          disabledBackgroundColor: AppColors.textSecondary.withOpacity(0.3),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          elevation: 2,
+                          elevation: isEnabled ? 2 : 0,
                           shadowColor: AppColors.primary.withOpacity(0.3),
                         ),
                         child: authController.isLoading
@@ -337,10 +359,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               )
-                            : const Text(
+                            : Text(
                                 'LOGIN',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: isEnabled 
+                                      ? Colors.white 
+                                      : Colors.white.withOpacity(0.5),
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 1.2,

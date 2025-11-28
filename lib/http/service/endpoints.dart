@@ -34,6 +34,8 @@ class ApiEndPoints {
 
     //home
     static const String getDashboardSummary = "Dashboard/app-dashboard";
+    static const String getListofAudits = "Asset/assetAudit-mismatch/pending";
+    
 
 
 }
