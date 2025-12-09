@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:itrack/http/service/dashboard_service.dart';
+import 'package:itrack/http/service/error_handler.dart';
+import 'package:itrack/http/service/storage_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardController extends GetxController {
@@ -27,12 +28,12 @@ class DashboardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    print('🟡 DashboardController onInit() started');
+    ErrorHandler.logInfo('DashboardController onInit() started', context: 'DashboardController');
     _initialize();
   }
 
   Future<void> _initialize() async {
-    print('🟡 DashboardController _initialize() started');
+    ErrorHandler.logInfo('DashboardController _initialize() started', context: 'DashboardController');
     await _loadUserData();
     _updateGreeting();
     _updateTime();
@@ -42,29 +43,25 @@ class DashboardController extends GetxController {
   /// Load user data from SharedPreferences
   Future<void> _loadUserData() async {
     try {
-      print('🟡 Loading user data from SharedPreferences...');
+      ErrorHandler.logInfo('Loading user data from SharedPreferences...', context: 'DashboardController');
       final prefs = await SharedPreferences.getInstance();
       
-      // ✅ Try multiple key formats for compatibility
-      userId = prefs.getString('user_id') ?? prefs.getString('userId');
-      locationId = prefs.getString('main_location_id') ?? prefs.getString('locationId');
-      username.value = prefs.getString('username') ?? prefs.getString('user_name') ?? 'User';
-      mainLocation.value = prefs.getString('main_location_name') ?? prefs.getString('locationName') ?? 'Unknown Location';
+      // Use centralized storage keys
+      userId = prefs.getString(StorageKeys.userId);
+      locationId = prefs.getString(StorageKeys.locationId);
+      username.value = prefs.getString(StorageKeys.userName) ?? 'User';
+      mainLocation.value = prefs.getString(StorageKeys.locationName) ?? 'Unknown Location';
       
-      print('🔵 Loaded user data:');
-      print('   userId: $userId');
-      print('   locationId: $locationId');
-      print('   username: ${username.value}');
-      print('   mainLocation: ${mainLocation.value}');
+      ErrorHandler.logInfo('Loaded user data: userId=$userId, locationId=$locationId', context: 'DashboardController');
       
       if (userId == null) {
-        print('🔴 WARNING: userId is null');
+        ErrorHandler.logWarning('userId is null', context: 'DashboardController');
       }
       if (locationId == null) {
-        print('🔴 WARNING: locationId is null');
+        ErrorHandler.logWarning('locationId is null', context: 'DashboardController');
       }
     } catch (e) {
-      print('🔴 Error loading user data: $e');
+      ErrorHandler.handle(e, context: 'DashboardController._loadUserData', showSnackbar: false);
     }
   }
 
@@ -72,25 +69,25 @@ class DashboardController extends GetxController {
 
 Future<void> fetchDashboardData() async {
   try {
-    print('🟡 fetchDashboardData() started');
+    ErrorHandler.logInfo('fetchDashboardData() started', context: 'DashboardController');
     isLoadingTotal.value = true;
     isLoadingToday.value = true;
     isLoadingAudits.value = true;
 
     final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('user_id') ?? '';
-    final locationId = prefs.getString('main_location_id') ?? '';
+    final userId = prefs.getString(StorageKeys.userId) ?? '';
+    final locationId = prefs.getString(StorageKeys.locationId) ?? '';
 
     if (userId.isEmpty || locationId.isEmpty) {
-      print('🔴 Missing userId or locationId');
-      _showError('User data not found. Please login again.');
+      ErrorHandler.logWarning('Missing userId or locationId', context: 'DashboardController');
+      ErrorHandler.handle('User data not found. Please login again.', context: 'DashboardController');
       
       // Redirect to login if no user data
       Get.offAllNamed('/login');
       return;
     }
 
-    print('🔵 Fetching dashboard for userId: $userId, locationId: $locationId');
+    ErrorHandler.logInfo('Fetching dashboard for userId: $userId, locationId: $locationId', context: 'DashboardController');
 
     final dashboardData = await DashboardService.getDashboardSummary(
       userId: userId,
@@ -102,52 +99,36 @@ Future<void> fetchDashboardData() async {
       todaysAssets.value = dashboardData.todaysAuditedAssets;
       auditCounts.value = dashboardData.getLocationAuditsList();
 
-      print('🟢 Dashboard data loaded successfully');
-      print('   Total: ${totalAssets.value}');
-      print('   Today: ${todaysAssets.value}');
-      print('   Locations: ${auditCounts.length}');
+      ErrorHandler.logInfo('Dashboard data loaded: Total=${totalAssets.value}, Today=${todaysAssets.value}', context: 'DashboardController');
     } else {
-      print('🔴 Dashboard response is null');
-      _showError('Failed to load dashboard data');
+      ErrorHandler.handle('Failed to load dashboard data', context: 'DashboardController');
     }
   } catch (e) {
-    print('🔴 fetchDashboardData error: $e');
-    _showError('Error loading dashboard: $e');
+    ErrorHandler.handle(e, context: 'DashboardController.fetchDashboardData');
   } finally {
     isLoadingTotal.value = false;
     isLoadingToday.value = false;
     isLoadingAudits.value = false;
-    print('🟡 fetchDashboardData() completed');
+    ErrorHandler.logInfo('fetchDashboardData() completed', context: 'DashboardController');
   }
-}
-
-void _showError(String message) {
-  Get.snackbar(
-    'Error',
-    message,
-    snackPosition: SnackPosition.BOTTOM,
-    backgroundColor: Colors.red,
-    colorText: Colors.white,
-    duration: const Duration(seconds: 3),
-  );
 }
 
   /// Refresh dashboard with pull-to-refresh
   Future<void> refreshDashboard() async {
-    print('🟡 Refreshing dashboard...');
+    ErrorHandler.logInfo('Refreshing dashboard...', context: 'DashboardController');
     await fetchDashboardData();
   }
 
   /// Logout user
   Future<void> logout() async {
     try {
-      print('🟡 Logging out user...');
+      ErrorHandler.logInfo('Logging out user...', context: 'DashboardController');
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-      print('🟢 User data cleared');
+      ErrorHandler.logInfo('User data cleared', context: 'DashboardController');
       Get.offAllNamed('/login');
     } catch (e) {
-      print('🔴 Logout error: $e');
+      ErrorHandler.handle(e, context: 'DashboardController.logout', showSnackbar: false);
       Get.offAllNamed('/login');
     }
   }

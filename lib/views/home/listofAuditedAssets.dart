@@ -10,7 +10,8 @@ class ListofTodaysAudit extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(AuditListController());
+    // Get the controller that was registered in the route binding
+    final controller = Get.find<AuditListController>();
 
     return Scaffold(
       appBar: AppBar(
@@ -152,77 +153,7 @@ class ListofTodaysAudit extends StatelessWidget {
   }
 
   Widget _buildStatisticsCards(AuditListController controller) {
-    return Obx(() {
-      final stats = controller.auditStatistics;
-      return SizedBox(
-        height: 100,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          children: [
-            _buildStatCard(
-              'Total',
-              stats['total'].toString(),
-              Icons.list_alt,
-              Colors.blue,
-            ),
-            _buildStatCard(
-              'Condition',
-              stats['conditionMismatch'].toString(),
-              Icons.warning_amber,
-              Colors.orange,
-            ),
-            _buildStatCard(
-              'Person',
-              stats['personMismatch'].toString(),
-              Icons.person_off,
-              Colors.purple,
-            ),
-            _buildStatCard(
-              'Room',
-              stats['roomMismatch'].toString(),
-              Icons.room_outlined,
-              Colors.green,
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Container(
-        width: 115,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.grey[600],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
+    return const SizedBox.shrink(); // Removed statistics cards
   }
 
   Widget _buildAuditCard(BuildContext context, AssetAuditMismatch audit) {
@@ -288,7 +219,7 @@ class ListofTodaysAudit extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '${audit.mismatchCount} Issues',
+                      '${audit.mismatchCount} Mismatch${audit.mismatchCount > 1 ? "es" : ""}',
                       style: const TextStyle(
                         color: Colors.red,
                         fontWeight: FontWeight.bold,

@@ -18,62 +18,78 @@ class AssetService {
       _authMiddleware = authMiddleware ?? AuthMiddleware.instance;
 
   // Get asset by barcode
-  Future<AssetResponseModel?> getAssetByBarcode(String barcode) async {
-    try {
-      final endpoint = ApiEndPoints.getAssetsByBarcode(barcode);
-      print('🟡 Fetching asset with endpoint: $endpoint');
+Future<AssetResponseModel?> getAssetByBarcode(String barcode) async {
+  try {
+    final endpoint = ApiEndPoints.getAssetsByBarcode(barcode);
+    print('🟡 Fetching asset with endpoint: $endpoint');
 
-      final response = await _authMiddleware.get(endpoint);
-      print('🔵 API Response Status: ${response.statusCode}');
-      print('🔵 API Response Body: ${response.body}');
+    final response = await _authMiddleware.get(endpoint);
+    print('🔵 API Response Status: ${response.statusCode}');
+    print('🔵 API Response Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
 
-        if (data == null || data.isEmpty) {
-          print('🟡 No asset found for barcode: $barcode');
+      if (data == null || data.isEmpty) {
+        print('🟡 No asset found for barcode: $barcode');
+        return null;
+      }
+
+      if (data is List) {
+        if (data.isEmpty) {
+          print('🟡 Empty list returned for barcode: $barcode');
           return null;
         }
-
-        if (data is List) {
-          if (data.isEmpty) {
-            print('🟡 Empty list returned for barcode: $barcode');
-            return null;
-          }
-          print('🟡 List response, using first item');
-          return AssetResponseModel.fromJson(data.first);
-        }
-
-        if (data is Map<String, dynamic>) {
-          if (data['assetDescription'] == null ||
-              data['assetDescription'] == 'null' ||
-              (data['assetDescription'] as String).isEmpty) {
-            print('🟡 Asset found but has empty description');
-            return null;
-          }
-          print('🟡 Single object response found with valid data');
-          return AssetResponseModel.fromJson(data);
-        }
-
-        print('🟡 Unknown response format: $data');
-        return null;
-      } else if (response.statusCode == 404) {
-        print('🟡 404 - Asset not found for barcode: $barcode');
-        return null;
-      } else {
-        print('🔴 API Error: ${response.statusCode} - ${response.body}');
-        throw Exception('Failed to load asset: ${response.statusCode}');
+        print('🟡 List response, using first item');
+        return AssetResponseModel.fromJson(data.first);
       }
-    } catch (e) {
-      print('🔴 Error fetching asset: $e');
-      throw Exception('Error fetching asset: $e');
-    }
-  }
 
+      if (data is Map<String, dynamic>) {
+        if (data['assetDescription'] == null ||
+            data['assetDescription'] == 'null' ||
+            (data['assetDescription'] as String).isEmpty) {
+          print('🟡 Asset found but has empty description');
+          return null;
+        }
+        print('🟡 Single object response found with valid data');
+        return AssetResponseModel.fromJson(data);
+      }
+
+      print('🟡 Unknown response format: $data');
+      return null;
+    } else if (response.statusCode == 404) {
+      print('🟡 404 - Asset not found for barcode: $barcode');
+      return null;
+    } else if (response.statusCode == 500) {
+      // ✅ Handle 500 error when asset is not found
+      final responseBody = response.body.toLowerCase();
+      if (responseBody.contains('not found') || 
+          responseBody.contains('asset with barcode')) {
+        print('🟡 500 - Asset not found for barcode: $barcode (treating as new asset)');
+        return null;  // ✅ Return null instead of throwing error
+      }
+      // If it's a different 500 error, still throw exception
+      print('🔴 API Error: ${response.statusCode} - ${response.body}');
+      throw Exception('Server error: ${response.body}');
+    } else {
+      print('🔴 API Error: ${response.statusCode} - ${response.body}');
+      throw Exception('Failed to load asset: ${response.statusCode}');
+    }
+  } catch (e) {
+    // Check if error message contains "not found" - handle gracefully
+    if (e.toString().toLowerCase().contains('not found')) {
+      print('🟡 Error contains "not found" - treating as new asset: $barcode');
+      return null;
+    }
+    print('🔴 Error fetching asset: $e');
+    throw Exception('Error fetching asset: $e');
+  }
+}
   // Get Plants
   Future<List<PlantModel>> getPlants() async {
     try {
-      print('🟡 Fetching plants');
+      print('🟡 AssetService: Fetching plants');
+      print('🔵 AssetService: Calling AuthMiddleware.get()');
       final response = await _authMiddleware.get(ApiEndPoints.getPlants);
 
       print('🔵 Plants Response Status: ${response.statusCode}');
@@ -217,6 +233,15 @@ class AssetService {
       } else {
         final errorBody = response.body;
         print('🔴 Create Asset Failed: ${response.statusCode} - $errorBody');
+        
+        // Try to parse error details
+        try {
+          final errorData = json.decode(errorBody);
+          print('🔴 Error details: $errorData');
+        } catch (e) {
+          print('🔴 Could not parse error response');
+        }
+        
         throw Exception(
           'Failed to create asset: ${response.statusCode} - $errorBody',
         );

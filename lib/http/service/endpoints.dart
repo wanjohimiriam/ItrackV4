@@ -3,7 +3,7 @@ class ApiEndPoints {
   
   // Auth
   static const String login = "Auth/login/";
-  static const String refreshIndicator = "Account/Refresh/";
+  static const String refreshIndicator = "Auth/refreshtoken";
   static const String resetPassword = "Auth/reset-password/{token}";
   static const String forgotPassword = "Auth/forgot-password";
   static const String logout = "Account/Logout/";

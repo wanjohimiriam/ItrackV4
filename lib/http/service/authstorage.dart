@@ -61,7 +61,7 @@ class AuthStorage {
   Future<String?> getAuthToken() async {
     await init();
     final token = _prefs!.getString(_authTokenKey);
-    print('Retrieved token: ${token != null ? "Token exists" : "No token found"}'); // Debug log
+    print('🔍 getAuthToken called - Token: ${token != null ? "EXISTS (${token.substring(0, 20)}...)" : "NULL"}');
     return token;
   }
 
@@ -157,6 +157,10 @@ class AuthStorage {
 
   // Save complete auth response
   Future<void> saveAuthResponse(AuthResponse response) async {
+    print('🔵 saveAuthResponse called');
+    print('🔵 Token from response: ${response.token != null ? response.token!.substring(0, 20) + "..." : "NULL"}');
+    print('🔵 Refresh token from response: ${response.refreshToken != null ? "EXISTS" : "NULL"}');
+    
     final expiryTime = response.expiration != null 
         ? DateTime.parse(response.expiration!)
         : DateTime.now().add(const Duration(days: 30)); // Default 30 days for better UX
@@ -169,11 +173,19 @@ class AuthStorage {
       isFirstLogin: response.isFirstLogin ?? false,
     );
     
-    print('Auth response saved successfully');
+    print('✅ Auth response saved successfully');
+    
+    // Verify it was saved
+    final savedToken = await getAuthToken();
+    print('🔍 Verification - Token saved: ${savedToken != null ? "YES" : "NO"}');
+    if (savedToken != null) {
+      print('🔍 Saved token preview: ${savedToken.substring(0, 20)}...');
+    }
   }
 
   // Get auth headers for API calls
   Future<Map<String, String>> getAuthHeaders() async {
+    print('🔵 getAuthHeaders called');
     final token = await getAuthToken();
     final headers = <String, String>{
       'Content-Type': 'application/json',
@@ -181,9 +193,15 @@ class AuthStorage {
     
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
-      print('Auth headers prepared with Bearer token');
+      print('✅ Auth headers prepared with Bearer token');
     } else {
-      print('Warning: No token available for auth headers');
+      print('🔴 WARNING: No token available for auth headers');
+      print('🔍 Checking SharedPreferences directly...');
+      await init();
+      final allKeys = _prefs!.getKeys();
+      print('🔍 All keys in SharedPreferences: $allKeys');
+      final directToken = _prefs!.getString(_authTokenKey);
+      print('🔍 Direct token check: ${directToken != null ? "EXISTS" : "NULL"}');
     }
     
     return headers;

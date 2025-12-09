@@ -6,22 +6,23 @@ import 'package:itrack/views/widget/colors.dart';
 class DashboardScreen extends StatelessWidget {
   DashboardScreen({Key? key}) : super(key: key);
 
-  final DashboardController controller = Get.put(DashboardController());
-
   @override
   Widget build(BuildContext context) {
+    // Get the controller that was registered in the route binding
+    final controller = Get.find<DashboardController>();
+    
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
-      drawer: _buildDrawer(),
+      appBar: _buildAppBar(controller),
+      drawer: _buildDrawer(controller),
       body: RefreshIndicator(
         onRefresh: () => controller.refreshDashboard(),
         color: AppColors.primary,
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeaderSection()),
-            SliverToBoxAdapter(child: _buildStatsSection()),
-            SliverToBoxAdapter(child: _buildAuditSection()),
+            SliverToBoxAdapter(child: _buildHeaderSection(controller)),
+            SliverToBoxAdapter(child: _buildStatsSection(controller)),
+            SliverToBoxAdapter(child: _buildAuditSection(controller)),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
           ],
         ),
@@ -29,7 +30,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(DashboardController controller) {
     return AppBar(
       backgroundColor: AppColors.primary,
       elevation: 0,
@@ -61,7 +62,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawer() {
+  Widget _buildDrawer(DashboardController controller) {
     return Drawer(
       child: Container(
         color: Colors.white,
@@ -159,7 +160,7 @@ class DashboardScreen extends StatelessWidget {
               color: AppColors.error,
               onTap: () {
                 Get.back();
-                _showLogoutDialog();
+                _showLogoutDialog(controller);
               },
             ),
           ],
@@ -181,7 +182,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showLogoutDialog() {
+  void _showLogoutDialog(DashboardController controller) {
     Get.defaultDialog(
       title: 'Logout',
       middleText: 'Are you sure you want to logout?',
@@ -196,7 +197,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderSection() {
+  Widget _buildHeaderSection(DashboardController controller) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(24),
@@ -241,7 +242,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsSection() {
+  Widget _buildStatsSection(DashboardController controller) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Obx(
@@ -326,7 +327,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAuditSection() {
+  Widget _buildAuditSection(DashboardController controller) {
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(

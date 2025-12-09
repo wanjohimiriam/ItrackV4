@@ -12,8 +12,11 @@ import 'package:itrack/http/model/locationmodel.dart';
 import 'package:itrack/http/service/assetservice.dart';
 import 'package:itrack/http/service/barcode_scanner_service.dart';
 import 'package:itrack/http/service/companyservice.dart';
+import 'package:itrack/http/service/error_handler.dart';
+import 'package:itrack/http/service/storage_keys.dart';
 import 'package:itrack/views/widget/colors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert' show utf8, base64Url;
 
 class CaptureController extends GetxController {
   final AssetService _assetService;
@@ -102,49 +105,183 @@ class CaptureController extends GetxController {
   final RxString saveType = 'insert'.obs;
   final RxBool isNewAsset = false.obs;
 
-  // User data
-  String tenantId = 'your-tenant-id';
+  // User data - loaded from SharedPreferences
+  String? tenantId;
+  String? currentUserId;
 
   @override
   void onInit() {
     super.onInit();
-    _initializeData();
+    _loadCurrentUser();
     _setupBarcodeListener();
     _loadDropdownData();
     _loadSavedLocation(); // Load the saved company location
-    _loadCurrentUser();
+  }
+  
+  @override
+  void onReady() {
+    super.onReady();
+    // Double-check user data after everything is loaded
+    _verifyUserSession();
+  }
+  
+  Future<void> _verifyUserSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString(StorageKeys.userId);
+      final tenantId = prefs.getString(StorageKeys.tenantId);
+      final token = prefs.getString(StorageKeys.authToken);
+      
+      ErrorHandler.logInfo(
+        'Session verification - userId: $userId, tenantId: $tenantId, hasToken: ${token != null}',
+        context: 'CaptureController',
+      );
+      
+      if ((userId == null || tenantId == null) && token != null) {
+        ErrorHandler.logWarning('User data missing but token exists, extracting...', context: 'CaptureController');
+        await _extractUserDataFromToken(token);
+        await _loadCurrentUser(); // Reload after extraction
+      }
+    } catch (e) {
+      ErrorHandler.logWarning('Session verification failed: $e', context: 'CaptureController');
+    }
   }
 
   Future<void> _loadCurrentUser() async {
     try {
+      print('🔵 _loadCurrentUser called');
       final prefs = await SharedPreferences.getInstance();
-      currentUserId = prefs.getString('user_id') ?? 'default-user-id';
-      tenantId = prefs.getString('tenant_id') ?? 'default-tenant-id';
-      print('🟢 Loaded user ID: $currentUserId');
-      print('🟢 Loaded tenant ID: $tenantId');
+      currentUserId = prefs.getString(StorageKeys.userId);
+      tenantId = prefs.getString(StorageKeys.tenantId);
+      
+      print('🔵 Initial load - userId: $currentUserId, tenantId: $tenantId');
+      ErrorHandler.logInfo('Loaded user ID: $currentUserId, tenant ID: $tenantId', context: 'CaptureController');
+      
+      if (currentUserId == null || tenantId == null) {
+        print('🔴 Missing user or tenant ID, attempting recovery...');
+        ErrorHandler.logWarning('Missing user or tenant ID', context: 'CaptureController');
+        
+        // Debug: Print all keys in SharedPreferences
+        final allKeys = prefs.getKeys();
+        print('🔍 All SharedPreferences keys: $allKeys');
+        ErrorHandler.logDebug('All SharedPreferences keys: $allKeys', context: 'CaptureController');
+        
+        // Try to get auth token to verify user is logged in
+        final token = prefs.getString(StorageKeys.authToken);
+        print('🔍 Auth token exists: ${token != null}');
+        ErrorHandler.logDebug('Auth token exists: ${token != null}', context: 'CaptureController');
+        
+        // If we have a token but no userId/tenantId, try to extract from token
+        if (token != null && token.isNotEmpty) {
+          print('🔄 Extracting user data from token...');
+          ErrorHandler.logInfo('Attempting to extract user data from existing token', context: 'CaptureController');
+          await _extractUserDataFromToken(token);
+          
+          // Reload after extraction
+          currentUserId = prefs.getString(StorageKeys.userId);
+          tenantId = prefs.getString(StorageKeys.tenantId);
+          print('✅ After extraction - userId: $currentUserId, tenantId: $tenantId');
+          ErrorHandler.logInfo('After extraction - user ID: $currentUserId, tenant ID: $tenantId', context: 'CaptureController');
+        } else {
+          print('🔴 No token found - user needs to login');
+        }
+      } else {
+        print('✅ User data loaded successfully');
+      }
     } catch (e) {
-      print('🔴 Error loading user data: $e');
+      print('🔴 Error in _loadCurrentUser: $e');
+      ErrorHandler.handle(e, context: 'CaptureController._loadCurrentUser', showSnackbar: false);
     }
   }
-
-  void _initializeData() {
-    // TODO: Get tenantId from user data
+  
+  // Helper to extract user data from token if missing
+  Future<void> _extractUserDataFromToken(String token) async {
+    try {
+      print('🔵 _extractUserDataFromToken called');
+      final jwtToken = token.replaceFirst('Bearer ', '');
+      final parts = jwtToken.split('.');
+      
+      if (parts.length != 3) {
+        print('🔴 Invalid JWT format - parts: ${parts.length}');
+        return;
+      }
+      
+      String normalized = parts[1];
+      while (normalized.length % 4 != 0) {
+        normalized += '=';
+      }
+      
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final claims = json.decode(decoded) as Map<String, dynamic>;
+      
+      print('🔍 JWT Claims keys: ${claims.keys.toList()}');
+      print('🔍 JWT Claims: $claims');
+      
+      final prefs = await SharedPreferences.getInstance();
+      
+      final userId = claims['sub'] as String? ?? 
+                     claims['userId'] as String? ?? 
+                     claims['user_id'] as String?;
+      final tenantId = claims['tenantId'] as String? ?? 
+                       claims['tenant_id'] as String? ?? 
+                       claims['TenantId'] as String?;
+      
+      print('🔍 Extracted userId: $userId');
+      print('🔍 Extracted tenantId: $tenantId');
+      
+      if (userId != null) {
+        await prefs.setString(StorageKeys.userId, userId);
+        print('✅ Saved userId to SharedPreferences');
+        ErrorHandler.logInfo('Extracted userId from token: $userId', context: 'CaptureController');
+      } else {
+        print('🔴 No userId found in token claims');
+      }
+      
+      if (tenantId != null) {
+        await prefs.setString(StorageKeys.tenantId, tenantId);
+        print('✅ Saved tenantId to SharedPreferences');
+        ErrorHandler.logInfo('Extracted tenantId from token: $tenantId', context: 'CaptureController');
+      } else {
+        print('🔴 No tenantId found in token claims');
+        
+        // Try to get tenantId from user_data
+        final userDataString = prefs.getString('user_data');
+        if (userDataString != null) {
+          try {
+            final userData = json.decode(userDataString) as Map<String, dynamic>;
+            final tenantIdFromData = userData['tenantId'] ?? userData['tenant_id'] ?? userData['TenantId'];
+            if (tenantIdFromData != null) {
+              await prefs.setString(StorageKeys.tenantId, tenantIdFromData.toString());
+              print('✅ Extracted tenantId from user_data: $tenantIdFromData');
+              ErrorHandler.logInfo('Extracted tenantId from user_data: $tenantIdFromData', context: 'CaptureController');
+            } else {
+              print('🔴 No tenantId in user_data either');
+            }
+          } catch (e) {
+            print('🔴 Error parsing user_data: $e');
+          }
+        }
+      }
+    } catch (e) {
+      print('🔴 Error extracting user data from token: $e');
+      ErrorHandler.logWarning('Failed to extract user data from token: $e', context: 'CaptureController');
+    }
   }
 
   // Load saved location from SharedPreferences
   Future<void> _loadSavedLocation() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final locationName = prefs.getString('main_location_name');
+      final locationName = prefs.getString(StorageKeys.locationName);
 
       if (locationName != null && locationName.isNotEmpty) {
         currentLocationController.text = locationName;
-        print('🟢 Loaded saved location: $locationName');
+        ErrorHandler.logInfo('Loaded saved location: $locationName', context: 'CaptureController');
       } else {
-        print('🟡 No saved location found');
+        ErrorHandler.logInfo('No saved location found', context: 'CaptureController');
       }
     } catch (e) {
-      print('🔴 Error loading saved location: $e');
+      ErrorHandler.handle(e, context: 'CaptureController._loadSavedLocation', showSnackbar: false);
     }
   }
 
@@ -163,7 +300,7 @@ class CaptureController extends GetxController {
   Future<void> _loadDropdownData() async {
     try {
       isLoading.value = true;
-      print('🟡 Loading dropdown data...');
+      ErrorHandler.logInfo('Loading dropdown data...', context: 'CaptureController');
 
       // Load all config data in parallel
       final results = await Future.wait([
@@ -179,7 +316,7 @@ class CaptureController extends GetxController {
       // Plants
       plantModels = results[0] as List<PlantModel>;
       plantNameList.value = plantModels.map((p) => p.name).toList();
-      print('🟢 Loaded ${plantModels.length} plants');
+      ErrorHandler.logInfo('Loaded ${plantModels.length} plants', context: 'CaptureController');
 
       // Departments - Remove duplicates using toSet()
       departmentModels = results[1] as List<DepartmentModel>;
@@ -187,33 +324,29 @@ class CaptureController extends GetxController {
           .map((d) => d.name)
           .toSet() // Remove duplicates
           .toList();
-      print(
-        '🟢 Loaded ${departmentModels.length} departments (${departmentList.length} unique)',
-      );
+      ErrorHandler.logInfo('Loaded ${departmentModels.length} departments (${departmentList.length} unique)', context: 'CaptureController');
 
       // Cost Centres
       costCentreModels = results[2] as List<CostCentreModel>;
-      print('🟢 Loaded ${costCentreModels.length} cost centres');
+      ErrorHandler.logInfo('Loaded ${costCentreModels.length} cost centres', context: 'CaptureController');
 
       // Asset Types
       assetTypeModels = results[3] as List<AssetTypeModel>;
       assetClassList.value = assetTypeModels.map((a) => a.name).toList();
-      print('🟢 Loaded ${assetTypeModels.length} asset types');
+      ErrorHandler.logInfo('Loaded ${assetTypeModels.length} asset types', context: 'CaptureController');
 
       // Conditions
       conditionModels = results[4] as List<ConditionModel>;
       conditionList.value = conditionModels.map((c) => c.name).toList();
-      print('🟢 Loaded ${conditionModels.length} conditions');
+      ErrorHandler.logInfo('Loaded ${conditionModels.length} conditions', context: 'CaptureController');
 
-      // In _loadDropdownData
+      // Persons
       personModels = results[5] as List<PersonModel>;
       personList.value = personModels
           .where((p) => p.displayName.isNotEmpty || p.fullName.isNotEmpty)
           .map((p) => p.displayName.isNotEmpty ? p.displayName : p.fullName)
           .toList();
-      print(
-        '🟢 Loaded ${personModels.length} persons (${personList.length} with names)',
-      );
+      ErrorHandler.logInfo('Loaded ${personModels.length} persons (${personList.length} with names)', context: 'CaptureController');
 
       // Locations
       locationModels = results[6] as List<Location>;
@@ -221,18 +354,11 @@ class CaptureController extends GetxController {
           .where((l) => l.name != null && l.name!.isNotEmpty)
           .map((l) => l.name!)
           .toList();
-      print('🟢 Loaded ${locationModels.length} locations');
+      ErrorHandler.logInfo('Loaded ${locationModels.length} locations', context: 'CaptureController');
 
-      print('🟢 All dropdown data loaded successfully');
+      ErrorHandler.logInfo('All dropdown data loaded successfully', context: 'CaptureController');
     } catch (e) {
-      print('🔴 Error loading dropdown data: $e');
-      Get.snackbar(
-        'Error',
-        'Failed to load form data: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      ErrorHandler.handle(e, context: 'CaptureController._loadDropdownData');
     } finally {
       isLoading.value = false;
     }
@@ -241,16 +367,14 @@ class CaptureController extends GetxController {
   Future<void> getAssetDetails(String barcode) async {
     try {
       isLoading.value = true;
-      print('🟡 Searching for asset with barcode: $barcode');
+      ErrorHandler.logInfo('Searching for asset with barcode: $barcode', context: 'CaptureController');
 
       final asset = await _assetService.getAssetByBarcode(barcode);
 
-      print(
-        '🔵 Asset service returned: ${asset != null ? "Asset found" : "No asset"}',
-      );
+      ErrorHandler.logInfo('Asset service returned: ${asset != null ? "Asset found" : "No asset"}', context: 'CaptureController');
 
       if (asset != null) {
-        print('🔵 Asset details: ${asset.assetDescription}');
+        ErrorHandler.logDebug('Asset details: ${asset.assetDescription}', context: 'CaptureController');
       }
 
       if (asset == null ||
@@ -262,7 +386,7 @@ class CaptureController extends GetxController {
         isNewAsset.value = true;
         saveType.value = 'insert';
 
-        print('🟡 New asset detected for barcode: $barcode');
+        ErrorHandler.logInfo('New asset detected for barcode: $barcode', context: 'CaptureController');
         await _showNewAssetDialog(barcode);
       } else {
         // Existing Asset
@@ -271,25 +395,12 @@ class CaptureController extends GetxController {
         saveType.value = 'update';
         _autoFillAssetData(asset);
 
-        print('🟢 Existing asset found and populated');
-        Get.snackbar(
-          'Asset Found',
-          'Existing asset loaded successfully',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        ErrorHandler.logInfo('Existing asset found and populated', context: 'CaptureController');
+        ErrorHandler.showSuccess('Existing asset loaded successfully', title: 'Asset Found');
       }
     } catch (e) {
       isLoading.value = false;
-      print('🔴 Error in getAssetDetails: $e');
-      Get.snackbar(
-        'Error',
-        'Failed to fetch asset: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      ErrorHandler.handle(e, context: 'CaptureController.getAssetDetails');
     }
   }
 
@@ -409,11 +520,9 @@ class CaptureController extends GetxController {
       selectedDepartment.value = asset.departmentName!;
     if (asset.personName != null && asset.personName!.isNotEmpty) {
       selectedPerson.value = asset.personName!;
-      print('🟢 Person populated from API: ${asset.personName}');
     }
     if (asset.locationName != null && asset.locationName!.isNotEmpty) {
       selectedMainLocation.value = asset.locationName!;
-      print('🟢 Location populated from API: ${asset.locationName}');
     }
     if (asset.subLocationName != null)
       selectedSubLocation.value = asset.subLocationName!;
@@ -423,26 +532,20 @@ class CaptureController extends GetxController {
 
     roomController.text = asset.roomName ?? '';
 
-    // ✅ Populate unit and cost center directly from API response
+    // Populate unit and cost center directly from API response
     if (asset.unit != null && asset.unit!.isNotEmpty) {
       unitController.text = asset.unit!;
-      print('🟢 Unit populated from API: ${asset.unit}');
     }
 
     if (asset.costCenter != null && asset.costCenter!.isNotEmpty) {
       costCenterController.text = asset.costCenter!;
-      print('🟢 Cost Center populated from API: ${asset.costCenter}');
     }
 
-    // ✅ Populate head of department from API
+    // Populate head of department from API
     if (asset.headofDepartment != null && asset.headofDepartment!.isNotEmpty) {
       selectedHeadDepartment.value = asset.headofDepartment!;
-      print(
-        '🟢 Head of Department populated from API: ${asset.headofDepartment}',
-      );
     } else {
       selectedHeadDepartment.value = '';
-      print('🟡 Head of Department not available in API response');
     }
 
     // ✅ Get email from person details
@@ -455,38 +558,31 @@ class CaptureController extends GetxController {
         // Populate email from person model
         if (person.staffEmail.isNotEmpty) {
           emailController.text = person.staffEmail;
-          print('🟢 Email populated from person model: ${person.staffEmail}');
         }
 
         // Override unit and cost center if person has more current data
         if (person.unit.isNotEmpty &&
             (asset.unit == null || asset.unit!.isEmpty)) {
           unitController.text = person.unit;
-          print('🟢 Unit populated from person model: ${person.unit}');
         }
 
         if (person.costCenter.isNotEmpty &&
             (asset.costCenter == null || asset.costCenter!.isEmpty)) {
           costCenterController.text = person.costCenter;
-          print(
-            '🟢 Cost Center populated from person model: ${person.costCenter}',
-          );
         }
 
-        print('🟢 Additional person details loaded from person model');
+        ErrorHandler.logDebug('Additional person details loaded from person model', context: 'CaptureController');
       } catch (e) {
-        print('🟡 Could not find person details in list: ${asset.personId}');
+        ErrorHandler.logDebug('Could not find person details in list: ${asset.personId}', context: 'CaptureController');
 
         // Fallback - if person not found in list, keep API values
         if (asset.email != null && asset.email!.isNotEmpty) {
           emailController.text = asset.email!;
-          print('🟢 Email populated from API fallback: ${asset.email}');
         }
       }
     } else if (asset.email != null && asset.email!.isNotEmpty) {
       // If no person models loaded, use email from API if available
       emailController.text = asset.email!;
-      print('🟢 Email populated from API: ${asset.email}');
     }
 
     // Store IDs
@@ -499,18 +595,7 @@ class CaptureController extends GetxController {
     roomDescId = asset.roomId;
     plantId = asset.plantId;
 
-    print('🟢 Asset data populated successfully');
-    print('📋 Asset Summary:');
-    print('   Description: ${asset.assetDescription}');
-    print('   Person: ${asset.personName}');
-    print('   Department: ${asset.departmentName}');
-    print('   Head of Dept: ${asset.headofDepartment ?? "Not available"}');
-    print('   Unit: ${unitController.text}');
-    print('   Cost Center: ${costCenterController.text}');
-    print('   Email: ${emailController.text}');
-    print('   Location: ${asset.locationName}');
-    print('   Room: ${asset.roomName}');
-    print('   Condition: ${asset.conditionName}');
+    ErrorHandler.logInfo('Asset data populated successfully: ${asset.assetDescription}', context: 'CaptureController');
   }
 
   void showPersonSearchDialog() {
@@ -677,7 +762,7 @@ class CaptureController extends GetxController {
   void onPersonSelected(String value) {
     selectedPerson.value = value;
 
-    // ✅ FIX: Find person by display name or full name, not just lastName
+    // Find person by display name or full name
     PersonModel? person;
     try {
       person = personModels.firstWhere((item) {
@@ -687,7 +772,7 @@ class CaptureController extends GetxController {
         return displayName == value;
       });
     } catch (e) {
-      print('🔴 Person not found: $value');
+      ErrorHandler.logWarning('Person not found: $value', context: 'CaptureController');
       person = null;
     }
 
@@ -706,12 +791,11 @@ class CaptureController extends GetxController {
         costCenterController.text = person.costCenter;
       }
 
-      // ✅ FIX: Autofill department if it exists - with null safety
+      // Autofill department if it exists
       if (person.departmentId != null && person.departmentId!.isNotEmpty) {
         try {
           final dept = departmentModels.firstWhere(
-            (d) =>
-                d.id == person!.departmentId, // ✅ Add null assertion operator
+            (d) => d.id == person!.departmentId,
             orElse: () => DepartmentModel(
               id: '',
               name: '',
@@ -723,21 +807,16 @@ class CaptureController extends GetxController {
           if (dept.id.isNotEmpty && dept.name.isNotEmpty) {
             selectedDepartment.value = dept.name;
             departmentId = dept.id;
-            print('🟢 Auto-filled department: ${dept.name}');
+            ErrorHandler.logInfo('Auto-filled department: ${dept.name}', context: 'CaptureController');
           }
         } catch (e) {
-          print('🟡 Could not find department: ${person.departmentId}');
+          ErrorHandler.logWarning('Could not find department: ${person.departmentId}', context: 'CaptureController');
         }
       }
 
-      print('🟢 Person selected: $value');
-      print('   ID: ${person.id}');
-      print('   Email: ${person.staffEmail}');
-      print('   Unit: ${person.unit}');
-      print('   Cost Center: ${person.costCenter}');
-      print('   Department ID: ${person.departmentId ?? "None"}');
+      ErrorHandler.logInfo('Person selected: $value (ID: ${person.id})', context: 'CaptureController');
     } else {
-      print('🔴 Failed to select person: $value');
+      ErrorHandler.logWarning('Failed to select person: $value', context: 'CaptureController');
     }
   }
 
@@ -792,7 +871,7 @@ class CaptureController extends GetxController {
     if (assetType.id.isNotEmpty) {
       assetClassId = assetType.id;
       assetClassCodeController.text = assetType.code;
-      print('🟢 Asset class selected: ${assetType.name} (${assetType.code})');
+      ErrorHandler.logDebug('Asset class selected: ${assetType.name} (${assetType.code})', context: 'CaptureController');
     }
   }
 
@@ -806,7 +885,7 @@ class CaptureController extends GetxController {
     if (plant.id.isNotEmpty) {
       plantId = plant.id;
       selectedPlantCode.value = plant.code;
-      print('🟢 Plant selected: ${plant.name} - Code: ${plant.code}');
+      ErrorHandler.logDebug('Plant selected: ${plant.name} - Code: ${plant.code}', context: 'CaptureController');
     }
   }
 
@@ -824,7 +903,7 @@ class CaptureController extends GetxController {
     );
     if (dept.id.isNotEmpty) {
       departmentId = dept.id;
-      print('🟢 Department selected: ${dept.name}');
+      ErrorHandler.logDebug('Department selected: ${dept.name}', context: 'CaptureController');
     }
   }
 
@@ -845,7 +924,7 @@ class CaptureController extends GetxController {
     if (condition.id.isNotEmpty) {
       conditionId = condition.id;
 
-      // ✅ Check if condition requires approvers
+      // Check if condition requires approvers
       final requiresApproval =
           value.toLowerCase() == 'decommission' ||
           value.toLowerCase() == 'stolen';
@@ -857,21 +936,7 @@ class CaptureController extends GetxController {
         conditionNotesController.clear();
       }
 
-      print('🟢 Condition selected: ${condition.name}');
-      print('🔵 Requires approval: $requiresApproval');
-    }
-  }
-
-  void _setDepartmentHead(String deptName) {
-    try {
-      final dept = departmentListFull.firstWhere(
-        (item) => item['department_name'] == deptName,
-      );
-      if (dept != null && dept['department_head'] != null) {
-        selectedHeadDepartment.value = dept['department_head'];
-      }
-    } catch (e) {
-      // Department not found
+      ErrorHandler.logDebug('Condition selected: ${condition.name}, Requires approval: $requiresApproval', context: 'CaptureController');
     }
   }
 
@@ -892,10 +957,7 @@ class CaptureController extends GetxController {
       // Autofill current location field with the selected location name
       currentLocationController.text = location.name ?? '';
 
-      print('🟢 Location selected: ${location.name}');
-      print('   ID: ${location.id}');
-      print('   Code: ${location.code}');
-      print('   Current Location autofilled: ${location.name}');
+      ErrorHandler.logDebug('Location selected: ${location.name} (${location.id})', context: 'CaptureController');
     }
   }
 
@@ -932,7 +994,7 @@ class CaptureController extends GetxController {
     );
 
     if (scannedCode != null && scannedCode.isNotEmpty) {
-      print('🟢 Barcode scanned: $scannedCode');
+      ErrorHandler.logInfo('Barcode scanned: $scannedCode', context: 'CaptureController');
       
       // Set the barcode value
       barcodeController.text = scannedCode;
@@ -940,30 +1002,16 @@ class CaptureController extends GetxController {
       // Automatically fetch asset details
       await getAssetDetails(scannedCode);
       
-      Get.snackbar(
-        'Barcode Scanned',
-        'Code: $scannedCode',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
-      );
+      ErrorHandler.showSuccess('Code: $scannedCode', title: 'Barcode Scanned', duration: const Duration(seconds: 2));
     } else {
-      print('🟡 Barcode scanning cancelled');
+      ErrorHandler.logDebug('Barcode scanning cancelled', context: 'CaptureController');
     }
   } catch (e) {
-    print('🔴 Error scanning barcode: $e');
-    Get.snackbar(
-      'Error',
-      'Failed to scan barcode: $e',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.red,
-      colorText: Colors.white,
-    );
+    ErrorHandler.handle(e, context: 'CaptureController.scanBarcode');
   }
 }
 
-// Update the scanSerialNumber method
+// Scan serial number method
 Future<void> scanSerialNumber() async {
   try {
     final String? scannedCode = await BarcodeScannerService.scanBarcode(
@@ -972,31 +1020,17 @@ Future<void> scanSerialNumber() async {
     );
 
     if (scannedCode != null && scannedCode.isNotEmpty) {
-      print('🟢 Serial number scanned: $scannedCode');
+      ErrorHandler.logInfo('Serial number scanned: $scannedCode', context: 'CaptureController');
       
       // Set the serial number value
       serialNoController.text = scannedCode;
       
-      Get.snackbar(
-        'Serial Number Scanned',
-        'Code: $scannedCode',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
-      );
+      ErrorHandler.showSuccess('Code: $scannedCode', title: 'Serial Number Scanned', duration: const Duration(seconds: 2));
     } else {
-      print('🟡 Serial number scanning cancelled');
+      ErrorHandler.logDebug('Serial number scanning cancelled', context: 'CaptureController');
     }
   } catch (e) {
-    print('🔴 Error scanning serial number: $e');
-    Get.snackbar(
-      'Error',
-      'Failed to scan serial number: $e',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.red,
-      colorText: Colors.white,
-    );
+    ErrorHandler.handle(e, context: 'CaptureController.scanSerialNumber');
   }
 }
 
@@ -1203,63 +1237,96 @@ Future<void> scanSerialNumber() async {
   }
 
   // Save Asset
-  // Add this property at the top of CaptureController
-  String currentUserId = 'your-user-id'; // TODO: Get from auth service
-
   Future<void> saveAsset() async {
+  // Validation
   if (barcodeHiddenController.text.isEmpty) {
-    Get.snackbar(
-      'Validation Error',
-      'Barcode is required',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-    );
+    ErrorHandler.showWarning('Barcode is required', title: 'Validation Error');
     return;
   }
 
   if (assetDescController.text.isEmpty) {
-    Get.snackbar(
-      'Validation Error',
-      'Asset Description cannot be empty',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-    );
+    ErrorHandler.showWarning('Asset Description cannot be empty', title: 'Validation Error');
     return;
   }
 
   if (assetClassId == null) {
-    Get.snackbar(
-      'Validation Error',
-      'Asset Type cannot be empty',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-    );
+    ErrorHandler.showWarning('Asset Type cannot be empty', title: 'Validation Error');
     return;
   }
 
   if (mainLocationId == null) {
-    Get.snackbar(
-      'Validation Error',
-      'Location cannot be empty',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-    );
+    ErrorHandler.showWarning('Location cannot be empty', title: 'Validation Error');
     return;
   }
   
   if (showApproversField.value && selectedApprovers.isEmpty) {
-    Get.snackbar(
-      'Validation Error',
+    ErrorHandler.showWarning(
       'Please select at least one approver for ${selectedCondition.value} condition',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
+      title: 'Validation Error',
     );
     return;
+  }
+  
+  // Reload user data if missing
+  if (currentUserId == null || tenantId == null) {
+    ErrorHandler.logWarning('🔴 User data missing, reloading...', context: 'CaptureController');
+    print('🔴 BEFORE RELOAD - userId: $currentUserId, tenantId: $tenantId');
+    await _loadCurrentUser();
+    print('🔴 AFTER RELOAD - userId: $currentUserId, tenantId: $tenantId');
+  }
+  
+  // Check if user data is loaded after reload attempt
+  if (currentUserId == null || tenantId == null) {
+    print('🔴 ========== SESSION ERROR DEBUG ==========');
+    print('🔴 currentUserId: $currentUserId');
+    print('🔴 tenantId: $tenantId');
+    
+    // Last resort: Check SharedPreferences directly
+    final prefs = await SharedPreferences.getInstance();
+    final allKeys = prefs.getKeys();
+    print('🔴 All SharedPreferences keys: $allKeys');
+    print('🔴 userId key value: ${prefs.getString(StorageKeys.userId)}');
+    print('🔴 tenantId key value: ${prefs.getString(StorageKeys.tenantId)}');
+    print('🔴 auth_token exists: ${prefs.getString(StorageKeys.authToken) != null}');
+    
+    // Check user_data for tenantId
+    final userDataString = prefs.getString('user_data');
+    if (userDataString != null) {
+      try {
+        final userData = json.decode(userDataString) as Map<String, dynamic>;
+        print('🔍 user_data contents: $userData');
+        final tenantIdFromData = userData['tenantId'] ?? userData['tenant_id'] ?? userData['TenantId'];
+        print('🔍 tenantId from user_data: $tenantIdFromData');
+        
+        if (tenantIdFromData != null) {
+          await prefs.setString(StorageKeys.tenantId, tenantIdFromData.toString());
+          tenantId = tenantIdFromData.toString();
+          print('✅ Recovered tenantId from user_data: $tenantId');
+          // Try again after recovery
+          if (currentUserId != null && tenantId != null) {
+            print('✅ Session recovered! Continuing with save...');
+            // Don't return, let it continue to save
+          }
+        }
+      } catch (e) {
+        print('🔴 Error parsing user_data: $e');
+      }
+    }
+    print('🔴 ==========================================');
+    
+    // Check final state
+    if (currentUserId == null) {
+      ErrorHandler.showWarning(
+        'User session not found. Please login again.',
+        title: 'Session Error',
+      );
+      return;
+    }
+    
+    // If tenantId is still null, leave it as null (will be omitted from request)
+    if (tenantId == null) {
+      print('⚠️ TenantId still null after recovery, will be omitted from request');
+    }
   }
 
   try {
@@ -1284,7 +1351,7 @@ Future<void> scanSerialNumber() async {
         department: selectedDepartment.value.isEmpty
             ? null
             : selectedDepartment.value,
-        userId: currentUserId,
+        userId: currentUserId!,
         conditionId: conditionId,
         roomDesc: roomController.text.isEmpty ? null : roomController.text,
         moreText: commentController.text.isEmpty
@@ -1317,7 +1384,7 @@ Future<void> scanSerialNumber() async {
 
       isLoading.value = false;
 
-      // ✅ Show success dialog with checkmark
+      // Show success dialog with checkmark
       await _showSuccessDialog(
         title: 'Audit Complete!',
         message: 'Asset audit for ${assetDescController.text} successfully completed',
@@ -1326,7 +1393,7 @@ Future<void> scanSerialNumber() async {
       _clearForm();
       
     } else {
-      // ✅ CREATE MODE
+      // CREATE MODE - Add new asset
       print('🔵 ========== CREATE MODE ==========');
 
       double? purchasePrice;
@@ -1366,19 +1433,19 @@ Future<void> scanSerialNumber() async {
         status: 0,
         createDate: DateTime.now(),
         updateDate: null,
-        createdBy: 'current_user',
+        createdBy: currentUserId!,
       );
 
       print('🔵 ========== CREATE REQUEST JSON ==========');
       final jsonData = request.toJson();
       print(const JsonEncoder.withIndent('  ').convert(jsonData));
-      print('🔵 ==========================================');
+      print('🔵 ========================================');
 
       final response = await _assetService.createAsset(request);
 
       isLoading.value = false;
 
-      // ✅ Show success dialog with checkmark
+      // Show success dialog with checkmark
       await _showSuccessDialog(
         title: 'Asset Created!',
         message: 'Asset ${assetDescController.text} successfully added to the system',
@@ -1386,23 +1453,11 @@ Future<void> scanSerialNumber() async {
       
       _clearForm();
 
-      print('🟢 Asset saved successfully: ${response.id}');
+      ErrorHandler.logInfo('Asset created successfully: ${response.id}', context: 'CaptureController');
     }
   } catch (e) {
     isLoading.value = false;
-    print('🔴 ========== SAVE ASSET ERROR ==========');
-    print('🔴 Error: $e');
-    print('🔴 Stack trace: ${StackTrace.current}');
-    print('🔴 ========================================');
-
-    Get.snackbar(
-      'Error',
-      'Failed to save asset: $e',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.red,
-      colorText: Colors.white,
-      duration: const Duration(seconds: 5),
-    );
+    ErrorHandler.handle(e, context: 'CaptureController.saveAsset', duration: const Duration(seconds: 5));
   }
 }
 

@@ -27,7 +27,7 @@ class AssetRequestModel {
   final String? netBookVal;
   final String? accDep;
   final String? invoiceNo;
-  final String tenantId;
+  final String? tenantId;
   final String createdBy;
   final bool triggerEmailNotification;
   final int status;
@@ -66,7 +66,7 @@ class AssetRequestModel {
     this.netBookVal,
     this.accDep,
     this.invoiceNo,
-    required this.tenantId,
+    this.tenantId,
     required this.createdBy,
     this.triggerEmailNotification = true,
     this.status = 0,
@@ -107,7 +107,7 @@ class AssetRequestModel {
       if (netBookVal != null) 'netBookVal': netBookVal,
       if (accDep != null) 'accDep': accDep,
       if (invoiceNo != null) 'invoiceNo': invoiceNo,
-      'tenantId': tenantId,
+      'tenantId': tenantId ?? '',
       'createdBy': createdBy,
       'triggerEmailNotification': triggerEmailNotification,
       'status': status,

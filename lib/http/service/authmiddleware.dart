@@ -26,6 +26,11 @@ class AuthMiddleware {
   Future<void> init() async {
     await _authStorage.init();
     print('🟢 AuthMiddleware initialized with baseUrl: $baseUrl');
+    
+    // Debug: Check if we have auth data
+    final hasToken = await _authStorage.getAuthToken() != null;
+    final isAuth = await _authStorage.isAuthenticated();
+    print('🔍 AuthMiddleware init check - Has token: $hasToken, Is authenticated: $isAuth');
   }
 
   // Make authenticated HTTP request with automatic token refresh
@@ -41,6 +46,9 @@ class AuthMiddleware {
       final isAuthenticated = await _authStorage.isAuthenticated();
       if (!isAuthenticated) {
         print('🔴 User not authenticated - redirecting to login');
+        print('🔍 Debug: Checking auth storage state...');
+        await _authStorage.debugAuthState();
+        await _handleAuthFailure();
         throw AuthException('User not authenticated');
       }
 
@@ -51,6 +59,7 @@ class AuthMiddleware {
         final refreshSuccess = await _refreshTokenIfNeeded();
         if (!refreshSuccess) {
           print('🔴 Token refresh failed');
+          await _handleAuthFailure();
           throw AuthException('Failed to refresh token');
         }
         print('🟢 Token refreshed successfully');
@@ -58,6 +67,7 @@ class AuthMiddleware {
     }
 
     // Get headers with auth token
+    print('🔵 AuthMiddleware: Getting auth headers...');
     final headers = await _authStorage.getAuthHeaders();
     if (additionalHeaders != null) {
       headers.addAll(additionalHeaders);
@@ -68,7 +78,11 @@ class AuthMiddleware {
     final uri = Uri.parse(fullUrl);
     
     print('🟡 Making API request to: $fullUrl');
-    print('🔵 Headers: ${headers.containsKey('Authorization') ? "Has Auth Token" : "No Auth Token"}');
+    print('🔵 Headers: ${headers.containsKey('Authorization') ? "✅ Has Auth Token" : "🔴 NO AUTH TOKEN"}');
+    if (headers.containsKey('Authorization')) {
+      final authHeader = headers['Authorization']!;
+      print('🔵 Auth header preview: ${authHeader.substring(0, 30)}...');
+    }
 
     http.Response response;
 

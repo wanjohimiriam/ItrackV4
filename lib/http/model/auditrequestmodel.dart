@@ -15,7 +15,7 @@ class AuditAssetRequestModel {
   final String? subSubLocationId;
   final String? condition;
   final String? assetName;
-  final String tenantId;
+  final String? tenantId;
   final List<String>? conditionChangeApprovers;
   final String? conditionChangeNotes;
 
@@ -35,7 +35,7 @@ class AuditAssetRequestModel {
     this.subSubLocationId,
     this.condition,
     this.assetName,
-    required this.tenantId,
+    this.tenantId,
     this.conditionChangeApprovers,
     this.conditionChangeNotes,
   });
@@ -57,7 +57,7 @@ class AuditAssetRequestModel {
       'subSubLocationId': subSubLocationId,
       'condition': condition,
       'assetName': assetName,
-      'tenantId': tenantId,
+      'tenantId': tenantId ?? '',
       'conditionChangeApprovers': conditionChangeApprovers,
       'conditionChangeNotes': conditionChangeNotes,
     };

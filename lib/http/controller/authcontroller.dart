@@ -7,6 +7,8 @@ import 'package:itrack/http/model/authmodels.dart';
 import 'package:itrack/http/service/authmiddleware.dart';
 import 'package:itrack/http/service/authservice.dart';
 import 'package:itrack/http/service/authstorage.dart';
+import 'package:itrack/http/service/error_handler.dart';
+import 'package:itrack/http/service/storage_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum AuthState {
@@ -83,13 +85,13 @@ class AuthController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    print('🎯 AuthController: Initializing...');
+    ErrorHandler.logInfo('AuthController: Initializing...', context: 'AuthController');
     _initializeAuth();
   }
 
   @override
   void onClose() {
-    print('🎯 AuthController: Closing...');
+    ErrorHandler.logInfo('AuthController: Closing...', context: 'AuthController');
     _disposeControllers();
     super.onClose();
   }
@@ -107,11 +109,11 @@ class AuthController extends GetxController {
   }
 
   void _logStateChange(AuthState oldState, AuthState newState) {
-    print('🔄 Auth State Change: ${oldState.name} → ${newState.name}');
+    ErrorHandler.logInfo('Auth State Change: ${oldState.name} → ${newState.name}', context: 'AuthController');
   }
 
   void _logMethodEntry(String methodName, [Map<String, dynamic>? params]) {
-    print('📥 AuthController.$methodName() - Entry');
+    ErrorHandler.logDebug('AuthController.$methodName() - Entry', context: 'AuthController');
     if (params != null) {
       final safeParams = Map<String, dynamic>.from(params);
       safeParams.remove('password');
@@ -119,14 +121,15 @@ class AuthController extends GetxController {
       safeParams.remove('newPassword');
       safeParams.remove('confirmPassword');
       if (safeParams.isNotEmpty) {
-        print('📋 Parameters: $safeParams');
+        ErrorHandler.logDebug('Parameters: $safeParams', context: 'AuthController');
       }
     }
   }
 
   void _logMethodExit(String methodName, [String? result]) {
-    print(
-      '📤 AuthController.$methodName() - Exit${result != null ? " ($result)" : ""}',
+    ErrorHandler.logDebug(
+      'AuthController.$methodName() - Exit${result != null ? " ($result)" : ""}',
+      context: 'AuthController',
     );
   }
 
@@ -134,20 +137,20 @@ class AuthController extends GetxController {
     final oldValue = _isLoading.value;
     _isLoading.value = loading;
     if (oldValue != loading) {
-      print('⏳ Loading state: $loading');
+      ErrorHandler.logDebug('Loading state: $loading', context: 'AuthController');
     }
   }
 
   void _setError(String error) {
     _errorMessage.value = error;
-    print('❌ Auth Error: $error');
+    ErrorHandler.logWarning('Auth Error: $error', context: 'AuthController');
   }
 
   void _clearError() {
     final hadError = _errorMessage.value.isNotEmpty;
     _errorMessage.value = '';
     if (hadError) {
-      print('🧹 Error cleared');
+      ErrorHandler.logDebug('Error cleared', context: 'AuthController');
     }
   }
 
@@ -398,6 +401,28 @@ class AuthController extends GetxController {
         print('🔴 Token is null or empty! Cannot extract user data.');
       }
       
+      // Also try to get tenantId from response data if not in JWT
+      if (response.data != null) {
+        print('🔍 Response data keys: ${response.data!.keys.toList()}');
+        print('🔍 Response data: ${response.data}');
+        
+        final prefs = await SharedPreferences.getInstance();
+        final tenantId = response.data!['tenantId'] ?? 
+                        response.data!['tenant_id'] ?? 
+                        response.data!['TenantId'];
+        
+        print('🔍 TenantId from response.data: $tenantId');
+        
+        if (tenantId != null) {
+          await prefs.setString(StorageKeys.tenantId, tenantId.toString());
+          print('✅ TenantId saved from response data: $tenantId');
+        } else {
+          print('🔴 No tenantId found in response.data');
+        }
+      } else {
+        print('🔴 response.data is null');
+      }
+      
       // Extract user from JWT and set current user
       print('🔍 Extracting user object from JWT token...');
       final user = _extractUserFromJWT(token ?? '');
@@ -416,10 +441,12 @@ class AuthController extends GetxController {
       // Verify SharedPreferences
       print('🔍 Verifying SharedPreferences directly...');
       final prefs = await SharedPreferences.getInstance();
-      final savedUserId = prefs.getString('userId');
-      final savedUserName = prefs.getString('username');
+      final savedUserId = prefs.getString(StorageKeys.userId);
+      final savedUserName = prefs.getString(StorageKeys.userName);
+      final savedTenantId = prefs.getString(StorageKeys.tenantId);
       print('🔵 Direct check - userId: $savedUserId');
       print('🔵 Direct check - username: $savedUserName');
+      print('🔵 Direct check - tenantId: $savedTenantId');
       
       // Set authenticated state
       _setAuthState(AuthState.authenticated);
@@ -465,38 +492,50 @@ class AuthController extends GetxController {
       
       print('🔍 JWT Claims: ${claims.keys.toList()}');
       
-      // Extract user data
-      final userId = claims['sub'] as String?;
-      final userName = claims['name'] as String?;
-      final userEmail = claims['email'] as String?;
+      // Extract user data - try multiple possible claim names
+      final userId = claims['sub'] as String? ?? 
+                     claims['userId'] as String? ?? 
+                     claims['user_id'] as String?;
+      final userName = claims['name'] as String? ?? 
+                       claims['username'] as String? ?? 
+                       claims['user_name'] as String?;
+      final userEmail = claims['email'] as String? ?? 
+                        claims['userEmail'] as String? ?? 
+                        claims['user_email'] as String?;
+      final tenantId = claims['tenantId'] as String? ?? 
+                       claims['tenant_id'] as String? ?? 
+                       claims['TenantId'] as String?;
       
       if (userId == null) {
         print('🔴 No user ID found in token');
         return;
       }
       
-      // Save to SharedPreferences
+      // Save to SharedPreferences using centralized keys
       final prefs = await SharedPreferences.getInstance();
       
-      // Save user ID with multiple key formats for compatibility
-      await prefs.setString('user_id', userId);
-      await prefs.setString('userId', userId);
+      // Save user ID
+      await prefs.setString(StorageKeys.userId, userId);
       
       // Save other user info
       if (userName != null) {
-        await prefs.setString('username', userName);
-        await prefs.setString('user_name', userName);
+        await prefs.setString(StorageKeys.userName, userName);
       }
       
       if (userEmail != null) {
-        await prefs.setString('user_email', userEmail);
-        await prefs.setString('email', userEmail);
+        await prefs.setString(StorageKeys.userEmail, userEmail);
+      }
+      
+      // Save tenant ID
+      if (tenantId != null) {
+        await prefs.setString(StorageKeys.tenantId, tenantId);
       }
       
       print('🟢 User data saved from token:');
       print('   userId: $userId');
       print('   username: $userName');
       print('   email: $userEmail');
+      print('   tenantId: $tenantId');
       
     } catch (e) {
       print('🔴 Error extracting user data from token: $e');
@@ -531,11 +570,17 @@ class AuthController extends GetxController {
 
       print('🔍 JWT Claims: ${claims.keys.toList()}');
 
-      // Extract user information from JWT claims
+      // Extract user information from JWT claims - try multiple possible claim names
       return User(
-        id: claims['sub']?.toString(),
-        name: claims['name']?.toString(),
-        email: claims['email']?.toString(),
+        id: claims['sub']?.toString() ?? 
+            claims['userId']?.toString() ?? 
+            claims['user_id']?.toString(),
+        name: claims['name']?.toString() ?? 
+              claims['username']?.toString() ?? 
+              claims['user_name']?.toString(),
+        email: claims['email']?.toString() ?? 
+               claims['userEmail']?.toString() ?? 
+               claims['user_email']?.toString(),
       );
     } catch (e) {
       print('⚠️ Failed to extract user from JWT: $e');
@@ -714,7 +759,7 @@ class AuthController extends GetxController {
   // ===========================================
 
   // Manual token refresh
-  Future<void> refreshToken() async {
+  Future<bool> refreshToken() async {
     _logMethodEntry('refreshToken');
 
     try {
@@ -725,6 +770,7 @@ class AuthController extends GetxController {
         print('❌ Token refresh failed - logging out');
         await logout();
         _logMethodExit('refreshToken', 'Failed - Logged out');
+        return false;
       } else {
         print('✅ Token refresh successful');
         // Update user data after refresh
@@ -734,11 +780,38 @@ class AuthController extends GetxController {
           print('👤 User data updated after refresh');
         }
         _logMethodExit('refreshToken', 'Success');
+        return true;
       }
     } catch (e) {
       print('❌ Token refresh exception: $e');
       await logout();
       _logMethodExit('refreshToken', 'Exception - Logged out');
+      return false;
+    }
+  }
+  
+  // Check and refresh token if needed before making API calls
+  Future<bool> ensureValidToken() async {
+    _logMethodEntry('ensureValidToken');
+    
+    try {
+      final isAuth = await _authStorage.isAuthenticated();
+      if (!isAuth) {
+        print('❌ User not authenticated');
+        return false;
+      }
+      
+      final shouldRefresh = await _authStorage.shouldRefreshToken();
+      if (shouldRefresh) {
+        print('🔄 Token needs refresh, refreshing...');
+        return await refreshToken();
+      }
+      
+      print('✅ Token is valid');
+      return true;
+    } catch (e) {
+      print('❌ Error checking token validity: $e');
+      return false;
     }
   }
 

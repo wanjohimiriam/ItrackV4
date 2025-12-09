@@ -165,15 +165,33 @@ class CaptureScreen extends StatelessWidget {
           prefixIcon: Icons.tag,
         ),
         const SizedBox(height: 12),
-        GestureDetector(
-          onTap: controller.scanSerialNumber,
-          child: AbsorbPointer(
-            child: _buildTextField(
-              controller: controller.serialNoController,
-              label: 'Serial Number',
-              prefixIcon: Icons.numbers,
+        Row(
+          children: [
+            Expanded(
+              child: _buildTextField(
+                controller: controller.serialNoController,
+                label: 'Serial Number',
+                prefixIcon: Icons.numbers,
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: controller.scanSerialNumber,
+              icon: const Icon(Icons.qr_code_scanner, size: 20),
+              label: const Text('Scan'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         _buildTextField(

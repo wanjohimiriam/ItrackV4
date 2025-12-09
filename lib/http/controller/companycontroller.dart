@@ -4,9 +4,10 @@ import 'package:get/get.dart';
 import 'package:itrack/http/service/companyservice.dart';
 import 'package:itrack/http/service/authstorage.dart';
 import 'package:itrack/http/service/authmiddleware.dart';
+import 'package:itrack/http/service/error_handler.dart';
+import 'package:itrack/http/service/storage_keys.dart';
 import 'package:itrack/http/model/locationmodel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/material.dart';
 
 class CompanyController extends GetxController {
   final CompanyService _companyService = CompanyService();
@@ -19,185 +20,149 @@ class CompanyController extends GetxController {
   var errorMessage = ''.obs;
   var isAuthenticated = false.obs;
 
-  // ✅ Add initialization flag to prevent double initialization
-  bool isInitialized = false;
-
   @override
   void onInit() {
     super.onInit();
-    print('🟡 CompanyController initialized');
-    // Don't initialize auth here since it might be called before login
-  }
-
-  // Call this when the screen is ready
-  Future<void> initialize() async {
-    // ✅ Prevent double initialization
-    if (isInitialized) {
-      print('🟡 CompanyController already initialized, skipping...');
-      return;
-    }
-
-    print('🟡 Starting CompanyController initialization...');
-    isInitialized = true;
-    await initializeAuth();
+    ErrorHandler.logInfo('CompanyController initialized', context: 'CompanyController');
+    // Initialize auth when controller is created
+    initializeAuth();
   }
 
   Future<void> initializeAuth() async {
     try {
-      print('🟡 initializeAuth() started');
+      ErrorHandler.logInfo('initializeAuth() started', context: 'CompanyController');
 
       // Initialize auth middleware
       await _authMiddleware.init();
-      print('🟢 AuthMiddleware initialized');
+      ErrorHandler.logInfo('AuthMiddleware initialized', context: 'CompanyController');
 
       // Check authentication status
       isAuthenticated.value = await _authStorage.isAuthenticated();
-      print('🔵 Authentication status: ${isAuthenticated.value}');
+      ErrorHandler.logInfo('Authentication status: ${isAuthenticated.value}', context: 'CompanyController');
 
       if (isAuthenticated.value) {
-        print('🟢 User is authenticated, loading locations...');
+        ErrorHandler.logInfo('User is authenticated, loading locations...', context: 'CompanyController');
         await loadLocations();
         await loadSavedLocation();
       } else {
         errorMessage.value = 'User not authenticated';
-        print('🔴 User not authenticated, redirecting to login');
+        ErrorHandler.logWarning('User not authenticated, redirecting to login', context: 'CompanyController');
         Get.offAllNamed('/login');
       }
     } catch (e) {
       errorMessage.value = 'Authentication error: ${e.toString()}';
-      print('🔴 initializeAuth() error: $e');
+      ErrorHandler.handle(e, context: 'CompanyController.initializeAuth');
       Get.offAllNamed('/login');
     }
   }
 
   Future<void> loadLocations() async {
     try {
-      print('🟡 loadLocations() started - calling API directly');
+      ErrorHandler.logInfo('loadLocations() started', context: 'CompanyController');
       isLoading.value = true;
       errorMessage.value = '';
 
       // Validate session first
       final sessionValid = await _authMiddleware.validateSession();
-      print('🔵 Session validation: $sessionValid');
+      ErrorHandler.logInfo('Session validation: $sessionValid', context: 'CompanyController');
 
       if (!sessionValid) {
         errorMessage.value = 'Session expired. Please login again.';
-        print('🔴 Session invalid, redirecting to login');
+        ErrorHandler.logWarning('Session invalid, redirecting to login', context: 'CompanyController');
         Get.offAllNamed('/login');
         return;
       }
 
       // Load locations directly from API
-      print('🟡 Calling getLocations() from CompanyService...');
+      ErrorHandler.logInfo('Calling getLocations() from CompanyService...', context: 'CompanyController');
       final locationsList = await _companyService.getLocations();
 
-      print('🔵 Locations list received. Count: ${locationsList.length}');
-
-      // Log each location for debugging
-      for (int i = 0; i < locationsList.length; i++) {
-        final location = locationsList[i];
-        print(
-          '📍 Location $i: id=${location.id}, name=${location.name}, code=${location.code}',
-        );
-      }
+      ErrorHandler.logInfo('Locations list received. Count: ${locationsList.length}', context: 'CompanyController');
 
       locations.assignAll(locationsList);
-      print(
-        '🟢 Locations assigned to observable. locations.length: ${locations.length}',
-      );
+      ErrorHandler.logInfo('Locations assigned to observable. locations.length: ${locations.length}', context: 'CompanyController');
 
       // If no locations, show appropriate message
       if (locationsList.isEmpty) {
         errorMessage.value = 'No locations available for your account.';
-        print('🟡 No locations available for user');
-
-        // Show user-friendly message
-        Get.snackbar(
-          'No Locations',
+        ErrorHandler.showWarning(
           'No locations are currently available. Please contact administrator.',
-          snackPosition: SnackPosition.BOTTOM,
+          title: 'No Locations',
         );
       }
     } on AuthException catch (e) {
       errorMessage.value = 'Authentication failed: ${e.message}';
-      print('🔴 AuthException in loadLocations(): ${e.message}');
+      ErrorHandler.handle(e, context: 'CompanyController.loadLocations');
       await _handleAuthFailure();
     } catch (e) {
       errorMessage.value = 'Failed to load locations: ${e.toString()}';
-      print('🔴 Exception in loadLocations(): $e');
+      ErrorHandler.handle(e, context: 'CompanyController.loadLocations');
     } finally {
       isLoading.value = false;
-      print('🟡 loadLocations() completed. isLoading: ${isLoading.value}');
+      ErrorHandler.logInfo('loadLocations() completed', context: 'CompanyController');
     }
   }
 
   Future<void> loadSavedLocation() async {
     try {
-      print('🟡 loadSavedLocation() started');
+      ErrorHandler.logInfo('loadSavedLocation() started', context: 'CompanyController');
       final savedLocation = await _companyService.getSavedLocation();
-      print(
-        '🔵 Saved location from storage: ${savedLocation?.id} - ${savedLocation?.name}',
-      );
+      ErrorHandler.logInfo('Saved location from storage: ${savedLocation?.id} - ${savedLocation?.name}', context: 'CompanyController');
 
       if (savedLocation != null) {
-        print('🟡 Searching for saved location in current locations list');
+        ErrorHandler.logInfo('Searching for saved location in current locations list', context: 'CompanyController');
         final currentLocation = locations.firstWhere(
           (location) => location.id == savedLocation.id,
           orElse: () {
-            print('🔴 Saved location not found in current locations list');
+            ErrorHandler.logWarning('Saved location not found in current locations list', context: 'CompanyController');
             return Location();
           },
         );
 
         if (currentLocation.id != null) {
           selectedLocation.value = currentLocation;
-          print('🟢 Saved location restored: ${currentLocation.name}');
+          ErrorHandler.logInfo('Saved location restored: ${currentLocation.name}', context: 'CompanyController');
         } else {
-          print('🔴 Current location has null ID, not restoring');
+          ErrorHandler.logWarning('Current location has null ID, not restoring', context: 'CompanyController');
         }
       } else {
-        print('🔵 No saved location found in storage');
+        ErrorHandler.logInfo('No saved location found in storage', context: 'CompanyController');
       }
     } catch (e) {
-      print('🔴 Error loading saved location: $e');
+      ErrorHandler.handle(e, context: 'CompanyController.loadSavedLocation', showSnackbar: false);
     }
   }
 
   void onLocationSelected(Location? location) {
-    print('🟡 onLocationSelected called with: ${location?.name}');
+    ErrorHandler.logInfo('onLocationSelected called with: ${location?.name}', context: 'CompanyController');
 
     selectedLocation.value = location;
 
     if (location != null) {
-      print('🟢 Location selected: ${location.name} (${location.id})');
+      ErrorHandler.logInfo('Location selected: ${location.name} (${location.id})', context: 'CompanyController');
       _saveLocationSelection(location);
     } else {
-      print('🔴 Location selection is null');
+      ErrorHandler.logWarning('Location selection is null', context: 'CompanyController');
     }
   }
 
   Future<void> _saveLocationSelection(Location location) async {
     try {
-      print('🟡 _saveLocationSelection started for: ${location.name}');
+      ErrorHandler.logInfo('Saving location: ${location.name}', context: 'CompanyController');
       await _companyService.saveSelectedLocation(location);
 
-      // Also save to auth storage for quick access
+      // Save to SharedPreferences using centralized keys
       await _authStorage.init();
       final prefs = await SharedPreferences.getInstance();
 
-      // ✅ Save with BOTH key formats to be safe
-      await prefs.setString('main_location_id', location.id ?? '');
-      await prefs.setString('main_location_name', location.name ?? '');
-      await prefs.setString('main_location_code', location.code ?? '');
+      await prefs.setString(StorageKeys.locationId, location.id ?? '');
+      await prefs.setString(StorageKeys.locationName, location.name ?? '');
+      await prefs.setString(StorageKeys.locationCode, location.code ?? '');
 
-      // ✅ ALSO save with the keys that DashboardController expects
-      await prefs.setString('locationId', location.id ?? '');
-      await prefs.setString('locationName', location.name ?? '');
-
-      print('🟢 Location selection saved: ${location.name} (${location.code})');
+      ErrorHandler.logInfo('Location saved: ${location.name} (${location.code})', context: 'CompanyController');
     } catch (e) {
       errorMessage.value = 'Failed to save location: ${e.toString()}';
-      print('🔴 Error saving location selection: $e');
+      ErrorHandler.handle(e, context: 'CompanyController._saveLocationSelection');
     }
   }
 
@@ -207,34 +172,28 @@ class CompanyController extends GetxController {
         selectedLocation.value!.id != null &&
         selectedLocation.value!.id!.isNotEmpty;
 
-    print(
-      '🔵 validateSelection(): $isValid (selected: ${selectedLocation.value?.name})',
-    );
+    ErrorHandler.logInfo('validateSelection(): $isValid (selected: ${selectedLocation.value?.name})', context: 'CompanyController');
     return isValid;
   }
 
   Future<void> proceedToHome() async {
-    print('🟡 proceedToHome() called');
+    ErrorHandler.logInfo('proceedToHome() called', context: 'CompanyController');
 
     if (!validateSelection()) {
-      print('🔴 Validation failed, showing snackbar');
-      Get.snackbar(
-        'Selection Required',
+      ErrorHandler.showWarning(
         'Please select a location to proceed',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
+        title: 'Selection Required',
       );
       return;
     }
 
     try {
       isLoading.value = true;
-      print('🟡 Proceeding to home, checking authentication...');
+      ErrorHandler.logInfo('Proceeding to home, checking authentication...', context: 'CompanyController');
 
       // Double-check authentication before proceeding
       final authValid = await _authMiddleware.validateSession();
-      print('🔵 Final auth validation: $authValid');
+      ErrorHandler.logInfo('Final auth validation: $authValid', context: 'CompanyController');
 
       if (!authValid) {
         throw AuthException('Session validation failed');
@@ -244,32 +203,24 @@ class CompanyController extends GetxController {
       await _saveLocationSelection(selectedLocation.value!);
 
       // Navigate to home
-      print('🟢 All validations passed, navigating to home');
+      ErrorHandler.logInfo('All validations passed, navigating to home', context: 'CompanyController');
       Get.offAllNamed('/home');
     } on AuthException catch (e) {
       errorMessage.value = 'Authentication error: ${e.message}';
-      print('🔴 AuthException in proceedToHome(): ${e.message}');
+      ErrorHandler.handle(e, context: 'CompanyController.proceedToHome');
       await _handleAuthFailure();
     } catch (e) {
       errorMessage.value = 'Error proceeding to home: ${e.toString()}';
-      print('🔴 Exception in proceedToHome(): $e');
-
-      Get.snackbar(
-        'Error',
-        'Failed to proceed: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      ErrorHandler.handle(e, context: 'CompanyController.proceedToHome');
     } finally {
       isLoading.value = false;
-      print('🟡 proceedToHome() completed');
+      ErrorHandler.logInfo('proceedToHome() completed', context: 'CompanyController');
     }
   }
 
   Future<void> _handleAuthFailure() async {
     try {
-      print('🟡 _handleAuthFailure() started');
+      ErrorHandler.logInfo('_handleAuthFailure() started', context: 'CompanyController');
 
       // Clear company-specific data
       await _companyService.clearSavedLocation();
@@ -278,29 +229,22 @@ class CompanyController extends GetxController {
       await _authMiddleware.forceLogout();
 
       // Navigate to login
-      print('🔴 Auth failure handled, redirecting to login');
+      ErrorHandler.logWarning('Auth failure handled, redirecting to login', context: 'CompanyController');
       Get.offAllNamed('/login');
     } catch (e) {
-      print('🔴 Error handling auth failure: $e');
+      ErrorHandler.handle(e, context: 'CompanyController._handleAuthFailure', showSnackbar: false);
     }
   }
 
   // Refresh locations manually
   Future<void> refreshLocations() async {
-    print('🟡 Manual refresh requested');
+    ErrorHandler.logInfo('Manual refresh requested', context: 'CompanyController');
     await loadLocations();
-  }
-
-  // ✅ Add reset method to clear initialization state (useful for testing)
-  void resetInitialization() {
-    isInitialized = false;
-    print('🔄 Controller initialization state reset');
   }
 
   @override
   void onClose() {
-    print('🔴 CompanyController disposed');
-    isInitialized = false;
+    ErrorHandler.logInfo('CompanyController disposed', context: 'CompanyController');
     super.onClose();
   }
 }

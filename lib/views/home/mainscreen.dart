@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:itrack/views/home/audit.dart';
-import 'package:itrack/views/home/dashboard.dart'; // Your existing capture screen
+import 'package:itrack/views/home/dashboard.dart';
+import 'package:itrack/views/widget/colors.dart'; // Your existing capture screen
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -29,7 +30,7 @@ class _MainScreenState extends State<MainScreen> {
             _currentIndex = index;
           });
         },
-        items: const [
+        items:[
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
             label: 'Dashboard',
@@ -40,7 +41,7 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ],
         backgroundColor: Colors.white,
-        selectedItemColor: Colors.green,
+        selectedItemColor:AppColors.primary,
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
