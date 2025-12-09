@@ -75,15 +75,17 @@ class CompanyLocationScreen extends StatelessWidget {
     // Get the controller that was registered in the route binding
     final controller = Get.find<CompanyController>();
 
-    // ✅ Wrap with WillPopScope to intercept back button
-    return WillPopScope(
-      onWillPop: () async {
-        final shouldExit = await _showExitDialog(context);
-        if (shouldExit) {
-          // Exit the app
-          SystemNavigator.pop();
+    // ✅ Wrap with PopScope to intercept back button
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (!didPop) {
+          final shouldExit = await _showExitDialog(context);
+          if (shouldExit) {
+            // Exit the app
+            SystemNavigator.pop();
+          }
         }
-        return false; // Always return false to prevent default back behavior
       },
       child: Scaffold(
         backgroundColor: AppColors.background,

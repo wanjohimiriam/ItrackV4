@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 
+import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:itrack/http/service/companyservice.dart';
 import 'package:itrack/http/service/authstorage.dart';
@@ -19,6 +20,10 @@ class CompanyController extends GetxController {
   var selectedLocation = Rxn<Location>();
   var errorMessage = ''.obs;
   var isAuthenticated = false.obs;
+  var lastLoadTime = Rxn<DateTime>();
+  
+  // Cache duration - 5 minutes
+  static const cacheDuration = Duration(minutes: 5);
 
   @override
   void onInit() {
@@ -26,6 +31,63 @@ class CompanyController extends GetxController {
     ErrorHandler.logInfo('CompanyController initialized', context: 'CompanyController');
     // Initialize auth when controller is created
     initializeAuth();
+  }
+  
+  bool _shouldReloadLocations() {
+    if (locations.isEmpty) return true;
+    if (lastLoadTime.value == null) return true;
+    
+    final timeSinceLoad = DateTime.now().difference(lastLoadTime.value!);
+    final shouldReload = timeSinceLoad > cacheDuration;
+    
+    ErrorHandler.logInfo(
+      'Cache check: ${shouldReload ? "RELOAD" : "USE CACHE"} (age: ${timeSinceLoad.inMinutes}min)',
+      context: 'CompanyController',
+    );
+    
+    return shouldReload;
+  }
+  
+  Future<List<Location>?> _loadLocationsFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_locations');
+      final cachedTime = prefs.getString('cached_locations_time');
+      
+      if (cachedJson == null || cachedTime == null) return null;
+      
+      final cacheAge = DateTime.now().difference(DateTime.parse(cachedTime));
+      if (cacheAge > cacheDuration) {
+        ErrorHandler.logInfo('Cache expired (${cacheAge.inMinutes}min old)', context: 'CompanyController');
+        return null;
+      }
+      
+      final List<dynamic> jsonList = json.decode(cachedJson);
+      final locations = jsonList.map((json) => Location.fromJson(json)).toList();
+      
+      lastLoadTime.value = DateTime.parse(cachedTime);
+      ErrorHandler.logInfo('Loaded ${locations.length} locations from SharedPreferences', context: 'CompanyController');
+      
+      return locations;
+    } catch (e) {
+      ErrorHandler.logWarning('Failed to load from cache: $e', context: 'CompanyController');
+      return null;
+    }
+  }
+  
+  Future<void> _saveLocationsToCache(List<Location> locations) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = locations.map((loc) => loc.toJson()).toList();
+      final jsonString = json.encode(jsonList);
+      
+      await prefs.setString('cached_locations', jsonString);
+      await prefs.setString('cached_locations_time', DateTime.now().toIso8601String());
+      
+      ErrorHandler.logInfo('Saved ${locations.length} locations to SharedPreferences', context: 'CompanyController');
+    } catch (e) {
+      ErrorHandler.logWarning('Failed to save to cache: $e', context: 'CompanyController');
+    }
   }
 
   Future<void> initializeAuth() async {
@@ -41,8 +103,15 @@ class CompanyController extends GetxController {
       ErrorHandler.logInfo('Authentication status: ${isAuthenticated.value}', context: 'CompanyController');
 
       if (isAuthenticated.value) {
-        ErrorHandler.logInfo('User is authenticated, loading locations...', context: 'CompanyController');
-        await loadLocations();
+        ErrorHandler.logInfo('User is authenticated, checking if locations need reload...', context: 'CompanyController');
+        
+        // Only load if cache is expired or empty
+        if (_shouldReloadLocations()) {
+          await loadLocations();
+        } else {
+          ErrorHandler.logInfo('Using cached locations (${locations.length} items)', context: 'CompanyController');
+        }
+        
         await loadSavedLocation();
       } else {
         errorMessage.value = 'User not authenticated';
@@ -62,6 +131,13 @@ class CompanyController extends GetxController {
       isLoading.value = true;
       errorMessage.value = '';
 
+      // Try to load from cache first
+      final cachedLocations = await _loadLocationsFromCache();
+      if (cachedLocations != null && cachedLocations.isNotEmpty) {
+        locations.assignAll(cachedLocations);
+        ErrorHandler.logInfo('Loaded ${cachedLocations.length} locations from cache', context: 'CompanyController');
+      }
+
       // Validate session first
       final sessionValid = await _authMiddleware.validateSession();
       ErrorHandler.logInfo('Session validation: $sessionValid', context: 'CompanyController');
@@ -73,13 +149,17 @@ class CompanyController extends GetxController {
         return;
       }
 
-      // Load locations directly from API
+      // Load locations from API
       ErrorHandler.logInfo('Calling getLocations() from CompanyService...', context: 'CompanyController');
       final locationsList = await _companyService.getLocations();
 
       ErrorHandler.logInfo('Locations list received. Count: ${locationsList.length}', context: 'CompanyController');
 
       locations.assignAll(locationsList);
+      lastLoadTime.value = DateTime.now();
+      
+      // Save to cache
+      await _saveLocationsToCache(locationsList);
       ErrorHandler.logInfo('Locations assigned to observable. locations.length: ${locations.length}', context: 'CompanyController');
 
       // If no locations, show appropriate message

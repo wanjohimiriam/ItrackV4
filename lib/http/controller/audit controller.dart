@@ -297,6 +297,26 @@ class CaptureController extends GetxController {
     });
   }
 
+  // Helper method to build full name from person model
+  String _buildPersonFullName(PersonModel person) {
+    // Build full name from firstName, middleName, lastName
+    final nameParts = <String>[];
+    
+    if (person.firstName.isNotEmpty) nameParts.add(person.firstName);
+    if (person.middleName.isNotEmpty) nameParts.add(person.middleName);
+    if (person.lastName.isNotEmpty) nameParts.add(person.lastName);
+    
+    if (nameParts.isNotEmpty) {
+      return nameParts.join(' ');
+    }
+    
+    // Fallback to displayName or fullName if individual names are not available
+    if (person.displayName.isNotEmpty) return person.displayName;
+    if (person.fullName.isNotEmpty) return person.fullName;
+    
+    return 'Unknown';
+  }
+
   Future<void> _loadDropdownData() async {
     try {
       isLoading.value = true;
@@ -335,16 +355,19 @@ class CaptureController extends GetxController {
       assetClassList.value = assetTypeModels.map((a) => a.name).toList();
       ErrorHandler.logInfo('Loaded ${assetTypeModels.length} asset types', context: 'CaptureController');
 
-      // Conditions
+      // Conditions - Remove duplicates using toSet()
       conditionModels = results[4] as List<ConditionModel>;
-      conditionList.value = conditionModels.map((c) => c.name).toList();
-      ErrorHandler.logInfo('Loaded ${conditionModels.length} conditions', context: 'CaptureController');
+      conditionList.value = conditionModels
+          .map((c) => c.name)
+          .toSet() // Remove duplicates
+          .toList();
+      ErrorHandler.logInfo('Loaded ${conditionModels.length} conditions (${conditionList.length} unique)', context: 'CaptureController');
 
       // Persons
       personModels = results[5] as List<PersonModel>;
       personList.value = personModels
-          .where((p) => p.displayName.isNotEmpty || p.fullName.isNotEmpty)
-          .map((p) => p.displayName.isNotEmpty ? p.displayName : p.fullName)
+          .where((p) => p.firstName.isNotEmpty || p.displayName.isNotEmpty || p.fullName.isNotEmpty)
+          .map((p) => _buildPersonFullName(p))
           .toList();
       ErrorHandler.logInfo('Loaded ${personModels.length} persons (${personList.length} with names)', context: 'CaptureController');
 
@@ -610,14 +633,14 @@ class CaptureController extends GetxController {
     void filterPersons(String query) {
       if (query.isEmpty) {
         filteredPersons.value = personModels
-            .where((p) => p.displayName.isNotEmpty || p.fullName.isNotEmpty)
+            .where((p) => p.firstName.isNotEmpty || p.displayName.isNotEmpty || p.fullName.isNotEmpty)
             .toList();
       } else {
         filteredPersons.value = personModels.where((p) {
-          final name = p.displayName.isNotEmpty ? p.displayName : p.fullName;
-          if (name.isEmpty) return false;
+          final fullName = _buildPersonFullName(p);
+          if (fullName == 'Unknown') return false;
 
-          final nameLower = name.toLowerCase();
+          final nameLower = fullName.toLowerCase();
           final emailLower = p.staffEmail.toLowerCase();
           final codeLower = p.personCode.toLowerCase();
           final queryLower = query.toLowerCase();
@@ -706,9 +729,7 @@ class CaptureController extends GetxController {
                     itemCount: filteredPersons.length,
                     itemBuilder: (context, index) {
                       final person = filteredPersons[index];
-                      final personName = person.displayName.isNotEmpty
-                          ? person.displayName
-                          : person.fullName;
+                      final personName = _buildPersonFullName(person);
 
                       return ListTile(
                         leading: CircleAvatar(
@@ -924,10 +945,8 @@ class CaptureController extends GetxController {
     if (condition.id.isNotEmpty) {
       conditionId = condition.id;
 
-      // Check if condition requires approvers
-      final requiresApproval =
-          value.toLowerCase() == 'decommission' ||
-          value.toLowerCase() == 'stolen';
+      // Check if condition requires approvers using triggersInsuranceClaim
+      final requiresApproval = condition.triggersInsuranceClaim;
       showApproversField.value = requiresApproval;
 
       // Clear approvers if condition changed to one that doesn't require approval
@@ -937,6 +956,26 @@ class CaptureController extends GetxController {
       }
 
       ErrorHandler.logDebug('Condition selected: ${condition.name}, Requires approval: $requiresApproval', context: 'CaptureController');
+    }
+  }
+  
+  // Helper method to check if a condition needs workflow
+  bool conditionNeedsWorkflow(String conditionName) {
+    try {
+      final condition = conditionModels.firstWhere(
+        (c) => c.name == conditionName,
+        orElse: () => ConditionModel(
+          id: '',
+          name: '',
+          code: '',
+          isActive: false,
+          triggersInsuranceClaim: false,
+          tenantId: '',
+        ),
+      );
+      return condition.triggersInsuranceClaim;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -1156,9 +1195,7 @@ Future<void> scanSerialNumber() async {
                     itemCount: filteredApprovers.length,
                     itemBuilder: (context, index) {
                       final person = filteredApprovers[index];
-                      final personName = person.displayName.isNotEmpty
-                          ? person.displayName
-                          : person.fullName;
+                      final personName = _buildPersonFullName(person);
                       final isSelected = selectedApprovers.contains(person.id);
 
                       return ListTile(
@@ -1331,10 +1368,13 @@ Future<void> scanSerialNumber() async {
 
   try {
     isLoading.value = true;
+    
+    print('🔍 saveType.value: ${saveType.value}');
+    print('🔍 isNewAsset.value: ${isNewAsset.value}');
 
     if (saveType.value == 'update') {
       // ✅ AUDIT MODE with approvers
-      print('🔵 ========== AUDIT MODE ==========');
+      print('🔵 ========== AUDIT MODE (UPDATE) ==========');
 
       final auditRequest = AuditAssetRequestModel(
         barcode: barcodeHiddenController.text,
@@ -1401,6 +1441,31 @@ Future<void> scanSerialNumber() async {
         purchasePrice = double.tryParse(purchasePriceController.text);
       }
 
+      // Try to find cost centre ID from the cost centre name
+      String? costCentreId;
+      if (costCenterController.text.isNotEmpty) {
+        try {
+          final costCentre = costCentreModels.firstWhere(
+            (cc) => cc.name.toLowerCase() == costCenterController.text.toLowerCase(),
+            orElse: () => CostCentreModel(
+              id: '',
+              name: '',
+              code: '',
+              isActive: false,
+              tenantId: '',
+            ),
+          );
+          if (costCentre.id.isNotEmpty) {
+            costCentreId = costCentre.id;
+            print('✅ Found cost centre ID: $costCentreId for ${costCenterController.text}');
+          } else {
+            print('⚠️ Cost centre not found in list: ${costCenterController.text}');
+          }
+        } catch (e) {
+          print('⚠️ Error finding cost centre: $e');
+        }
+      }
+
       final request = AssetRequestModel(
         assetDescription: assetDescController.text,
         serialNumber: serialNoController.text.isEmpty
@@ -1414,6 +1479,7 @@ Future<void> scanSerialNumber() async {
         purchaseDate: DateTime.now(),
         assetTypeId: assetClassId!,
         conditionId: conditionId,
+        costCentreId: costCentreId,
         departmentId: departmentId,
         locationId: mainLocationId!,
         roomId: roomDescId,

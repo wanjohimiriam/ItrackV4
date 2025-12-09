@@ -15,12 +15,12 @@ class CaptureScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         elevation: 0,
-        leading: GestureDetector(
-          onTap: () => Get.back(),
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Get.back(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            // Navigate back to home (which will show dashboard tab)
+            Get.offAllNamed('/home');
+          },
         ),
         title: const Text(
           'Asset Audit & Capture',
@@ -377,7 +377,8 @@ class CaptureScreen extends StatelessWidget {
     Icons.info_outline,
     [
       Obx(
-        () => _buildDropdown(
+        () => _buildConditionDropdown(
+          controller: controller,
           label: 'Condition',
           value: controller.selectedCondition.value.isEmpty
               ? null
@@ -769,6 +770,100 @@ class CaptureScreen extends StatelessWidget {
                 ),
               ),
             ),
+          )
+          .toList(),
+      onChanged: (val) {
+        if (val != null) onChanged(val);
+      },
+    );
+  }
+  
+  Widget _buildConditionDropdown({
+    required CaptureController controller,
+    required String label,
+    required String? value,
+    required RxList<String> items,
+    required Function(String) onChanged,
+    IconData? prefixIcon,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 14,
+        ),
+        prefixIcon: prefixIcon != null
+            ? Icon(prefixIcon, color: AppColors.primary, size: 20)
+            : null,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppStyles.radiusSmall),
+          borderSide: const BorderSide(color: AppColors.borderFocused, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+      ),
+      icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
+      items: items
+          .map(
+            (item) {
+              final needsWorkflow = controller.conditionNeedsWorkflow(item);
+              return DropdownMenuItem(
+                value: item,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        item,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (needsWorkflow) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.orange.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.approval, size: 12, color: Colors.orange.shade700),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Workflow',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           )
           .toList(),
       onChanged: (val) {

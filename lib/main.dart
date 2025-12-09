@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
       ),
       initialBinding: BindingsBuilder(() {
         Get.put(AuthController(), permanent: true);
-         Get.put(CaptureScreen(), permanent: true);
+        Get.put(CaptureScreen(), permanent: true);
       }),
       getPages: [
         GetPage(
@@ -48,14 +48,20 @@ class MyApp extends StatelessWidget {
           name: "/home",
           page: () => MainScreen(),
           binding: BindingsBuilder(() {
-            Get.lazyPut(() => DashboardController());
+            // Use Get.put with permanent to keep controller alive
+            if (!Get.isRegistered<DashboardController>()) {
+              Get.put(DashboardController(), permanent: true);
+            }
           }),
         ),
         GetPage(
           name: "/company",
           page: () => const CompanyLocationScreen(),
           binding: BindingsBuilder(() {
-            Get.lazyPut(() => CompanyController());
+            // Use Get.put with permanent to keep controller alive
+            if (!Get.isRegistered<CompanyController>()) {
+              Get.put(CompanyController(), permanent: true);
+            }
           }),
         ),
         GetPage(
@@ -75,7 +81,7 @@ class MyApp extends StatelessWidget {
         ),
         GetPage(
           name: "/capture",
-          page: () => CaptureScreen(),
+          page: () => const CaptureScreen(),
           binding: BindingsBuilder(() {
             Get.lazyPut(() => CaptureController());
           }),

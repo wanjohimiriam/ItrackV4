@@ -24,6 +24,10 @@ class DashboardController extends GetxController {
   // User credentials
   String? userId;
   String? locationId;
+  
+  // Cache management
+  var lastLoadTime = Rxn<DateTime>();
+  static const cacheDuration = Duration(minutes: 2);
 
   @override
   void onInit() {
@@ -31,13 +35,74 @@ class DashboardController extends GetxController {
     ErrorHandler.logInfo('DashboardController onInit() started', context: 'DashboardController');
     _initialize();
   }
+  
+  bool _shouldReloadDashboard() {
+    if (lastLoadTime.value == null) return true;
+    
+    final timeSinceLoad = DateTime.now().difference(lastLoadTime.value!);
+    final shouldReload = timeSinceLoad > cacheDuration;
+    
+    ErrorHandler.logInfo(
+      'Dashboard cache check: ${shouldReload ? "RELOAD" : "USE CACHE"} (age: ${timeSinceLoad.inSeconds}s)',
+      context: 'DashboardController',
+    );
+    
+    return shouldReload;
+  }
+  
+  Future<void> _loadDashboardFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedTotal = prefs.getInt('cached_total_assets');
+      final cachedToday = prefs.getInt('cached_today_assets');
+      final cachedTime = prefs.getString('cached_dashboard_time');
+      
+      if (cachedTime == null) return;
+      
+      final cacheAge = DateTime.now().difference(DateTime.parse(cachedTime));
+      if (cacheAge > cacheDuration) {
+        ErrorHandler.logInfo('Dashboard cache expired (${cacheAge.inMinutes}min old)', context: 'DashboardController');
+        return;
+      }
+      
+      if (cachedTotal != null) totalAssets.value = cachedTotal;
+      if (cachedToday != null) todaysAssets.value = cachedToday;
+      lastLoadTime.value = DateTime.parse(cachedTime);
+      
+      ErrorHandler.logInfo('Loaded dashboard from SharedPreferences (Total: $cachedTotal, Today: $cachedToday)', context: 'DashboardController');
+    } catch (e) {
+      ErrorHandler.logWarning('Failed to load dashboard from cache: $e', context: 'DashboardController');
+    }
+  }
+  
+  Future<void> _saveDashboardToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('cached_total_assets', totalAssets.value);
+      await prefs.setInt('cached_today_assets', todaysAssets.value);
+      await prefs.setString('cached_dashboard_time', DateTime.now().toIso8601String());
+      
+      ErrorHandler.logInfo('Saved dashboard to SharedPreferences', context: 'DashboardController');
+    } catch (e) {
+      ErrorHandler.logWarning('Failed to save dashboard to cache: $e', context: 'DashboardController');
+    }
+  }
 
   Future<void> _initialize() async {
     ErrorHandler.logInfo('DashboardController _initialize() started', context: 'DashboardController');
     await _loadUserData();
     _updateGreeting();
     _updateTime();
-    await fetchDashboardData();
+    
+    // Load from cache first for instant display
+    await _loadDashboardFromCache();
+    
+    // Only fetch if cache is expired
+    if (_shouldReloadDashboard()) {
+      await fetchDashboardData();
+    } else {
+      ErrorHandler.logInfo('Using cached dashboard data', context: 'DashboardController');
+    }
   }
 
   /// Load user data from SharedPreferences
@@ -98,6 +163,10 @@ Future<void> fetchDashboardData() async {
       totalAssets.value = dashboardData.totalAuditedAssets;
       todaysAssets.value = dashboardData.todaysAuditedAssets;
       auditCounts.value = dashboardData.getLocationAuditsList();
+      lastLoadTime.value = DateTime.now();
+      
+      // Save to cache
+      await _saveDashboardToCache();
 
       ErrorHandler.logInfo('Dashboard data loaded: Total=${totalAssets.value}, Today=${todaysAssets.value}', context: 'DashboardController');
     } else {

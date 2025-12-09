@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:itrack/http/controller/audit%20controller.dart';
 import 'package:itrack/views/home/audit.dart';
 import 'package:itrack/views/home/dashboard.dart';
-import 'package:itrack/views/widget/colors.dart'; // Your existing capture screen
+import 'package:itrack/views/widget/colors.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -14,16 +15,35 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    DashboardScreen(), // Your dashboard screen
-    CaptureScreen(),   // Your capture screen
-  ];
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize CaptureController if not already created
+    if (!Get.isRegistered<CaptureController>()) {
+      Get.put(CaptureController());
+    }
+    
+    _screens = [
+      DashboardScreen(), // Your dashboard screen
+      const CaptureScreen(),   // Your capture screen
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          // Navigate back to company selection instead of exiting
+          Get.offAllNamed('/company');
+        }
+      },
+      child: Scaffold(
+        body: _screens[_currentIndex],
+        bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
@@ -45,6 +65,7 @@ class _MainScreenState extends State<MainScreen> {
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
+      ),
       ),
     );
   }
